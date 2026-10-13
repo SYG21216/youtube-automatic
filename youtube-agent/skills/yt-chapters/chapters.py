@@ -16,14 +16,24 @@ summariser.
 import json, os, re, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "yt-edit"))
 from deadair import load, parse_ts  # noqa: E402  (same parser, one implementation)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "yt-package"))
+from title import strip_josa  # noqa: E402
 
 STOP = set("the a an of for to in on and or is are was were be been with this that it as at by from "
            "you your i my we our they them he she but so if then than there here what which who how "
            "when where why not no yes do does did just really very like about into over out up down "
            "can could will would should have has had get got make made go going went one two".split())
 
+KO_STOP = set("그리고 그래서 그런데 근데 정말 진짜 이제 제가 저는 저도 여러분 이거 그거 이것 그것 이렇게 그렇게 "
+              "오늘 지금 우리 다음 처음 하나 같은 이런 그런 어떤 얼마 많이 조금 바로 정도 있는 없는 하는 실제 여러 그대 아니라 내용 훨씬 모아".split())
+# ponytail: predicates are dropped by their ending, not by a morphological analyzer - good enough to
+# leave the nouns a chapter title is made of. Swap in a real tokenizer if titles come out as verbs.
+KO_PRED = re.compile(r"(니다|어요|아요|에요|예요|해요|었|았|겠|죠|는데|니까|지만|으면|면서|려고|고요|는지|해야|거든요|더라고요|다|요|고|서|게)$")
+
 def keywords(text):
-    return {w for w in re.findall(r"[a-z']{4,}", text.lower()) if w not in STOP}
+    en = {w for w in re.findall(r"[a-z']{4,}", text.lower()) if w not in STOP}
+    ko = {strip_josa(w) for w in re.findall(r"[가-힣]{2,}", text)}
+    return en | {w for w in ko if len(w) >= 2 and w not in KO_STOP and not KO_PRED.search(w)}
 
 def mmss(t):
     t = int(t); h, m, s = t // 3600, (t % 3600) // 60, t % 60
@@ -59,7 +69,10 @@ def main():
         text = " ".join(c[2] for c in cues if c[0] >= t and c[1] <= end)
         kw = [w for w in keywords(text)]
         kw.sort(key=lambda w: -text.lower().count(w))
-        title = " ".join(w.capitalize() for w in kw[:3]) or "Section"
+        top = []
+        for w in kw:  # "할인" and "할인받" are one topic, keep the shorter
+            if len(top) < 3 and not any(t in w or w in t for t in top): top.append(w)
+        title = " ".join(w.capitalize() for w in top) or "Section"
         chapters.append({"start": round(t, 2), "label": mmss(t), "draft_title": title,
                          "seconds": round(end - t, 2)})
     ok = len(chapters) >= 3 and chapters[0]["start"] == 0 and all(c["seconds"] >= MIN for c in chapters)
