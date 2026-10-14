@@ -7,7 +7,8 @@
 script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
      "bgm": "optional file name in shorts/bgm/ (random if omitted)",
-     "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query",
+     "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query,
+                or {"orig": [start, end], "caption": "what they say"} to play the original moment with its own sound",
      "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search",
                  "clips": [123, 456]}]}   # optional Pixabay ids chosen from --sheet
 
@@ -46,7 +47,7 @@ def font():
 
 def tts(text, out):
     body = {"input": {"text": text.replace("*", "")}, "voice": {"languageCode": "ko-KR", "name": VOICE},
-            "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 44100, "speakingRate": 1.15}}
+            "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 44100, "speakingRate": 1.2}}
     r = get(f"https://texttospeech.googleapis.com/v1/text:synthesize?key={os.environ['GOOGLE_TTS_KEY']}",
             json.dumps(body).encode(), {"Content-Type": "application/json"})
     open(out, "wb").write(base64.b64decode(json.loads(r)["audioContent"]))
@@ -159,7 +160,14 @@ def make(script, out):
         vparts, aparts, timeline = [], [], []
         for i, s in enumerate(script["scenes"]):
             wav = os.path.join(tmp, f"{i}.wav")
-            tts(s["say"], wav)
+            if s.get("orig"):
+                # the people's own voices: play the source moment with its sound, captioned
+                a, b = s["orig"]
+                ff("-ss", f"{a:.2f}", "-t", f"{b - a:.2f}", "-i", script["source"], "-vn",
+                   "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", wav)
+                s = {**s, "say": s.get("caption", ""), "src": [a]}
+            else:
+                tts(s["say"], wav)
             d = duration(wav)
             aparts.append(wav)
             # captions: spread over the scene by character count
@@ -224,7 +232,7 @@ if __name__ == "__main__":
     script = json.load(open(a.script))
     if a.sheet:
         sheet(script, a.sheet); sys.exit()
-    chars = sum(len(s["say"]) for s in script["scenes"])
+    chars = sum(len(s.get("say", "")) for s in script["scenes"])
     # free-tier guard: 1M TTS chars/month free; 9 shorts/day x 700 x 31 = ~20% of it
     if chars > MAX_TTS_CHARS: sys.exit(f"script too long for the free TTS budget: {chars} > {MAX_TTS_CHARS} chars")
     out = make(script, a.out)
