@@ -6,7 +6,9 @@
 
 script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
-     "bgm": "optional file name in shorts/bgm/ (random if omitted)",
+     "style": "optional "pick": 하루한픽 layout - white header/footer, no TTS, original-audio scenes only,
+               with "comment" (one reaction line under the video) and "credit" (출처 line)",
+     "voice": "optional Google TTS voice name (default VOICE)",
      "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query,
                 or {"orig": [start, end], "lines": [[start, "도겸", "what they say"], ...]} to play the original
                 moment with its own sound, captioned per line with the speaker's name ("" when unsure)",
@@ -15,18 +17,20 @@ script.json:
 
 Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffprobe (with libass).
 """
-import argparse, base64, glob, json, random, os, subprocess, sys, tempfile, urllib.parse, urllib.request
+import argparse, base64, json, random, os, subprocess, sys, tempfile, urllib.parse, urllib.request
 
-VOICE = "ko-KR-Chirp3-HD-Leda"
+VOICE = "ko-KR-Chirp3-HD-Aoede"
 FONT_URL = "https://raw.githubusercontent.com/orioncactus/pretendard/main/packages/pretendard/dist/public/static/Pretendard-ExtraBold.otf"
-BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # optional local override
-DRIVE_BGM = "쇼츠BGM"  # Drive folder of royalty-free tracks, used when BGM is empty
-BGM_VOL = 0.084  # under the voice; raise if the music gets lost on phone speakers
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 MAX_TTS_CHARS = 700  # per Short; keeps Google TTS far inside its free tier
 # 16:9 source -> 9:16: sharp picture across the middle, blurred zoomed copy behind it
 FIT = ("[0:v]split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:5,"
        "eq=brightness=-0.12[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,fps=30,setsar=1")
+# "pick" style: picture in a 1080x810 band on white, header (brand + title) above, comment + credit below
+PICK_TOP = 520
+FIT_PICK = (f"[0:v]scale=1080:810:force_original_aspect_ratio=increase,crop=1080:810,setsar=1,"
+            f"pad=1080:1920:0:{PICK_TOP}:white,fps=30")
+GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
 YELLOW = r"{\c&H00E0FF&}"
@@ -45,8 +49,8 @@ def font():
         open(path, "wb").write(get(FONT_URL))
     return CACHE
 
-def tts(text, out):
-    body = {"input": {"text": text.replace("*", "")}, "voice": {"languageCode": "ko-KR", "name": VOICE},
+def tts(text, out, voice=VOICE):
+    body = {"input": {"text": text.replace("*", "")}, "voice": {"languageCode": "ko-KR", "name": voice},
             "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 44100, "speakingRate": 1.2}}
     r = get(f"https://texttospeech.googleapis.com/v1/text:synthesize?key={os.environ['GOOGLE_TTS_KEY']}",
             json.dumps(body).encode(), {"Content-Type": "application/json"})
@@ -92,16 +96,6 @@ def sheet(script, outdir):
                 ff("-i", os.path.join(tmp, "%02d.png"), "-vf", "tile=4x2", "-frames:v", "1", out)
         print(f"scene {i} [{s['query']}] {out if hits else 'NO RESULTS'}  " + " ".join(f"{n}={h['id']}" for n, h in enumerate(hits)))
 
-def drive_bgm(tmp):
-    """Random mp3 from the channel account's Drive folder DRIVE_BGM (same OAuth token as upload.py)."""
-    from upload import drive_ls, drive_get
-    try:
-        f = random.choice(drive_ls(DRIVE_BGM, "audio/"))
-        print(f"bgm: {f['name']}")
-        return drive_get(f["id"], os.path.join(tmp, "bgm.mp3"))
-    except Exception as e:  # music is nice-to-have; never block the upload over it
-        print(f"warning: drive bgm failed: {e}", file=sys.stderr)
-
 def duration(path):
     return float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                                           "-of", "csv=p=0", path]).strip())
@@ -131,7 +125,7 @@ def chunks(say):
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180):
+def ass(title, timeline, cap_y=1180, pick=None):
     head = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -141,22 +135,36 @@ PlayResY: 1920
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Title,Pretendard ExtraBold,88,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,7,0,8,60,60,230,1
 Style: Cap,Pretendard ExtraBold,96,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,9,5,5,70,70,0,1
+Style: PTitle,Pretendard ExtraBold,80,&H00000000,&H00000000,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,60,60,1430,1
+Style: PBrand,Pretendard ExtraBold,50,&H007E2EFF,&H007E2EFF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,60,60,190,1
+Style: PCap,Pretendard ExtraBold,72,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,7,0,5,60,60,0,1
+Style: PNote,Pretendard ExtraBold,66,&H00000000,&H00000000,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,60,60,1385,1
+Style: PCredit,Pretendard ExtraBold,44,&H00777777,&H00777777,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,60,60,150,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     end = timeline[-1][1] if timeline else 0
     t = title.replace("\\n", "\n").replace("\n", r"\N")
+    hl, base = (r"{\c&H7E2EFF&}", r"{\c&H000000&}") if pick else (YELLOW, r"{\c&HFFFFFF&}")
     while "*" in t:
-        t = t.replace("*", YELLOW, 1).replace("*", r"{\c&HFFFFFF&}", 1)
-    lines = [f"Dialogue: 1,{ts(0)},{ts(end)},Title,,0,0,0,,{t}"]
+        t = t.replace("*", hl, 1).replace("*", base, 1)
+    if pick:
+        lines = [f"Dialogue: 1,{ts(0)},{ts(end)},PBrand,,0,0,0,,대신봐드림",
+                 f"Dialogue: 1,{ts(0)},{ts(end)},PTitle,,0,0,0,,{t}",
+                 f"Dialogue: 1,{ts(0)},{ts(end)},PNote,,0,0,0,,{pick.get('comment', '')}",
+                 f"Dialogue: 1,{ts(0)},{ts(end)},PCredit,,0,0,0,,{pick.get('credit', '')}"]
+    else:
+        lines = [f"Dialogue: 1,{ts(0)},{ts(end)},Title,,0,0,0,,{t}"]
     pop = r"{\pos(540,%d)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}" % cap_y
-    lines += [f"Dialogue: 0,{ts(a)},{ts(b)},Cap,,0,0,0,,{pop}{text}" for a, b, text in timeline]
+    lines += [f"Dialogue: 0,{ts(a)},{ts(b)},{'PCap' if pick else 'Cap'},,0,0,0,,{pop}{text}" for a, b, text in timeline]
     return head + "\n".join(lines) + "\n"
 
 def make(script, out):
     with tempfile.TemporaryDirectory() as tmp:
         used, fontsdir, t = set(), font(), 0.0
+        pick = script if script.get("style") == "pick" else None
+        reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
         vparts, aparts, timeline = [], [], []
         for i, s in enumerate(script["scenes"]):
             wav = os.path.join(tmp, f"{i}.wav")
@@ -170,13 +178,13 @@ def make(script, out):
                     d = b - a
                     for k, (lt, who, text) in enumerate(s["lines"]):
                         end = s["lines"][k + 1][0] if k + 1 < len(s["lines"]) else b
-                        name = f"{{\\c&H7E2EFF&}}{who}{{\\c&HFFFFFF&}} " if who else ""
+                        name = f"{{\\c&H7E2EFF&}}{who}{reset} " if who else ""
                         timeline.append((t + max(lt - a, 0), t + min(end, b) - a, name + text))
                     s = {**s, "say": "", "src": [a]}
                 else:
                     s = {**s, "say": s.get("caption", ""), "src": [a]}
             else:
-                tts(s["say"], wav)
+                tts(s["say"], wav, script.get("voice", VOICE))
             d = duration(wav)
             aparts.append(wav)
             # captions: spread over the scene by character count
@@ -189,7 +197,7 @@ def make(script, out):
                 for j, st in enumerate(starts):
                     seg = os.path.join(tmp, f"{i}_{j}.mp4")
                     ff("-ss", f"{st:.2f}", "-i", script["source"], "-t", f"{d / len(starts):.3f}", "-an",
-                       "-filter_complex", FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                       "-filter_complex", FIT_PICK if pick else FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
                     vparts.append(seg)
                 t += d
                 continue
@@ -208,22 +216,11 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("v.txt", vparts), "-c", "copy", os.path.join(tmp, "v.mp4"))
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
-        open(sub, "w").write(ass(script.get("title", ""), timeline, 1440 if script.get("source") else 1180))
-        bgms = [os.path.join(BGM, script["bgm"])] if script.get("bgm") else glob.glob(os.path.join(BGM, "*.mp3"))
-        bgm = random.choice(bgms) if bgms else drive_bgm(tmp)
-        graph = f"[0:v]subtitles={sub}:fontsdir={fontsdir}[mv];"
-        if bgm:
-            # skip the intro so the music is already moving when the hook lands
-            skip = ["-ss", "25"] if duration(bgm) > 70 else []
-            bgm_in = [*skip, "-stream_loop", "-1", "-i", bgm]
-            graph += (f"[2:a]volume={BGM_VOL},afade=t=in:d=0.5,afade=t=out:st={max(0, t - 1.2):.2f}:d=1.2[b];"
-                      "[1:a][b]amix=inputs=2:duration=first:normalize=0[ma];")
-        else:
-            print("warning: no background music found", file=sys.stderr)
-            bgm_in, graph = [], graph + "[1:a]anull[ma];"
-        graph = graph.replace("[mv];", "[v];").rstrip(";").replace("[ma]", "[a]")
-        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in,
-           "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",
+        cap_y = PICK_TOP + 700 if pick else 1440 if script.get("source") else 1180
+        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick))
+        # no background music: original voices and the narration only
+        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"),
+           "-vf", f"subtitles={sub}:fontsdir={fontsdir}", "-map", "0:v", "-map", "1:a", "-t", f"{t:.3f}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out)
     return out
@@ -232,9 +229,15 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("script"); p.add_argument("-o", "--out", default="short.mp4"); p.add_argument("--sheet")
     a = p.parse_args()
-    missing = [k for k in ("PIXABAY_API_KEY", "GOOGLE_TTS_KEY") if not os.environ.get(k)]
-    if missing: sys.exit(f"missing env: {', '.join(missing)}")
     script = json.load(open(a.script))
+    says = [i for i, s in enumerate(script["scenes"]) if s.get("say")]
+    if script.get("style") == "pick" and says: sys.exit("pick style has no narration: use orig scenes only")
+    # review style: narration only as the opening hook and the closing line; the middle is the people themselves
+    if script.get("source") and set(says) - {0, len(script["scenes"]) - 1}:
+        sys.exit("narration only in the first and last scene; middle scenes must be orig")
+    need = (["GOOGLE_TTS_KEY"] if says else []) + ([] if script.get("source") else ["PIXABAY_API_KEY"])
+    missing = [k for k in need if not os.environ.get(k)]
+    if missing: sys.exit(f"missing env: {', '.join(missing)}")
     if a.sheet:
         sheet(script, a.sheet); sys.exit()
     chars = sum(len(s.get("say", "")) for s in script["scenes"])
