@@ -5,15 +5,18 @@
     python3 upload.py video.mp4 --title "..." --desc "..." --publish-at 2026-10-15T07:30:00+09:00   # scheduled
     python3 upload.py --recent          # last 50 uploads: title <TAB> source YouTube id, to avoid repeats
 
-Reads YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN from the environment.
+Reads YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN from the environment
+(optional DRIVE_REFRESH_TOKEN: a different Google account for Drive, e.g. when the channel is a Brand Account).
 A vertical video under 3 minutes is treated as a Short by YouTube automatically.
 """
 import argparse, datetime, json, os, re, shutil, sys, urllib.parse, urllib.request
 
-def access_token():
+def access_token(drive=False):
+    # A Brand Account channel has no Drive of its own, so Drive may use a separate token (DRIVE_REFRESH_TOKEN)
+    token = (drive and os.environ.get("DRIVE_REFRESH_TOKEN")) or os.environ["YT_REFRESH_TOKEN"]
     body = urllib.parse.urlencode({
         "client_id": os.environ["YT_CLIENT_ID"], "client_secret": os.environ["YT_CLIENT_SECRET"],
-        "refresh_token": os.environ["YT_REFRESH_TOKEN"], "grant_type": "refresh_token"}).encode()
+        "refresh_token": token, "grant_type": "refresh_token"}).encode()
     with urllib.request.urlopen("https://oauth2.googleapis.com/token", body) as r:
         return json.load(r)["access_token"]
 
@@ -44,7 +47,7 @@ def upload(path, title, desc, privacy, publish_at=None):
             return json.load(r)["id"]
 
 def api(url):
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token()}"})
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token('/drive/' in url)}"})
     with urllib.request.urlopen(req) as r:
         return json.load(r)
 
@@ -59,7 +62,7 @@ def drive_ls(folder, mime=""):
 
 def drive_get(file_id, path):
     req = urllib.request.Request(f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
-                                 headers={"Authorization": f"Bearer {access_token()}"})
+                                 headers={"Authorization": f"Bearer {access_token(drive=True)}"})
     with urllib.request.urlopen(req) as r, open(path, "wb") as f:
         shutil.copyfileobj(r, f)  # source videos can be GBs; stream, don't buffer
     return path
