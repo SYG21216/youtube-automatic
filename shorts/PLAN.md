@@ -9,7 +9,7 @@
 - 환경 변수: YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN / PIXABAY_API_KEY / GOOGLE_TTS_KEY
 - `make.py` → `upload.py` 비공개 테스트 성공 (2026-10-14, 테스트 영상 LXyIqUDYnXo, rqRmqOLb_xQ 삭제해도 됨)
 - `upload.py --recent`: 최근 업로드 제목 (주제 중복 방지용)
-- 루틴: 매일 07:57, 12:57, 19:57 KST × 3개씩 = 하루 9개 (create_trigger 새 세션 방식)
+- 루틴: 06:40, 11:40, 18:10 KST에 제작 시작 → 07:30, 12:30, 19:00에 3개씩 예약 공개 (`--publish-at`) = 하루 9개
 
 ## 루틴 한 번 = 이렇게
 1. `python3 shorts/upload.py --recent` 로 지난 주제 확인
@@ -31,7 +31,7 @@
      (예: 겨울 창밖 눈, 이불 덮은 사람, 따뜻한 차, 계산기·고지서)으로 대체. 관련 없는 영상으로 채우지 않는다
    - 장면 하나에 2~3초 컷이 여러 개 들어가므로 clips는 1~3개 넣는다
 4. `python3 shorts/make.py script.json -o short.mp4`
-5. yt-package 기준으로 제목 정하고 설명란 작성 → `python3 shorts/upload.py short.mp4 --title ... --desc ... --privacy public`
+5. yt-package 기준으로 제목 정하고 설명란 작성 → `python3 shorts/upload.py short.mp4 --title ... --desc ... --publish-at <공개 시각>`
    설명란 형식 (upload.py가 해시태그 3개 미만이면 거부, 해시태그는 태그로도 등록됨):
    ```
    한 줄 요약 (이 영상 보면 뭘 얻는지)

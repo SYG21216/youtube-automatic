@@ -2,12 +2,13 @@
 """upload.py - upload one video to YouTube with only the stdlib.
 
     python3 upload.py video.mp4 --title "..." [--desc "..."] [--privacy private|unlisted|public]
+    python3 upload.py video.mp4 --title "..." --desc "..." --publish-at 2026-10-15T07:30:00+09:00   # scheduled
     python3 upload.py --recent          # titles of the channel's last 50 uploads, to avoid repeats
 
 Reads YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN from the environment.
 A vertical video under 3 minutes is treated as a Short by YouTube automatically.
 """
-import argparse, json, os, sys, urllib.parse, urllib.request
+import argparse, datetime, json, os, sys, urllib.parse, urllib.request
 
 def access_token():
     body = urllib.parse.urlencode({
@@ -16,12 +17,18 @@ def access_token():
     with urllib.request.urlopen("https://oauth2.googleapis.com/token", body) as r:
         return json.load(r)["access_token"]
 
-def upload(path, title, desc, privacy):
+def upload(path, title, desc, privacy, publish_at=None):
     tok = access_token()
     tags = [w.lstrip("#") for w in desc.split() if w.startswith("#")]
     meta = {"snippet": {"title": title[:100], "description": desc, "tags": tags, "categoryId": "26",
                         "defaultLanguage": "ko", "defaultAudioLanguage": "ko"},
             "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
+    if publish_at:  # YouTube flips a scheduled video from private to public at this moment
+        when = datetime.datetime.fromisoformat(publish_at).astimezone(datetime.timezone.utc)
+        if when > datetime.datetime.now(datetime.timezone.utc):
+            meta["status"].update(privacyStatus="private", publishAt=when.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        else:
+            meta["status"]["privacyStatus"] = "public"  # slot already passed: publish now
     req = urllib.request.Request(
         "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
         data=json.dumps(meta).encode(), method="POST",
@@ -46,6 +53,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("video", nargs="?"); p.add_argument("--title"); p.add_argument("--recent", action="store_true")
     p.add_argument("--desc", default=""); p.add_argument("--privacy", default="private")
+    p.add_argument("--publish-at", help="ISO time with offset, e.g. 2026-10-15T07:30:00+09:00")
     a = p.parse_args()
     missing = [k for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN") if not os.environ.get(k)]
     if missing: sys.exit(f"missing env: {', '.join(missing)}")
@@ -53,5 +61,5 @@ if __name__ == "__main__":
         print("\n".join(recent())); sys.exit()
     if not (a.video and a.title): p.error("video and --title are required")
     if a.desc.count("#") < 3: p.error("--desc needs a content summary and at least 3 #hashtags")
-    vid = upload(a.video, a.title, a.desc, a.privacy)
+    vid = upload(a.video, a.title, a.desc, a.privacy, a.publish_at)
     print(f"https://youtube.com/shorts/{vid}")
