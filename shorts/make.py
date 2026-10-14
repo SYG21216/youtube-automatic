@@ -8,7 +8,8 @@ script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
      "bgm": "optional file name in shorts/bgm/ (random if omitted)",
      "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query,
-                or {"orig": [start, end], "caption": "what they say"} to play the original moment with its own sound",
+                or {"orig": [start, end], "lines": [[start, "도겸", "what they say"], ...]} to play the original
+                moment with its own sound, captioned per line with the speaker's name ("" when unsure)",
      "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search",
                  "clips": [123, 456]}]}   # optional Pixabay ids chosen from --sheet
 
@@ -21,7 +22,6 @@ FONT_URL = "https://raw.githubusercontent.com/orioncactus/pretendard/main/packag
 BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # optional local override
 DRIVE_BGM = "쇼츠BGM"  # Drive folder of royalty-free tracks, used when BGM is empty
 BGM_VOL = 0.084  # under the voice; raise if the music gets lost on phone speakers
-INTRO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "intro.mp4")  # rebuild with channel/intro.py
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 MAX_TTS_CHARS = 700  # per Short; keeps Google TTS far inside its free tier
 # 16:9 source -> 9:16: sharp picture across the middle, blurred zoomed copy behind it
@@ -165,13 +165,22 @@ def make(script, out):
                 a, b = s["orig"]
                 ff("-ss", f"{a:.2f}", "-t", f"{b - a:.2f}", "-i", script["source"], "-vn",
                    "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", wav)
-                s = {**s, "say": s.get("caption", ""), "src": [a]}
+                if s.get("lines"):
+                    # [[start sec, speaker or "", text], ...] -> one caption per line, speaker name in pink
+                    d = b - a
+                    for k, (lt, who, text) in enumerate(s["lines"]):
+                        end = s["lines"][k + 1][0] if k + 1 < len(s["lines"]) else b
+                        name = f"{{\\c&H7E2EFF&}}{who}{{\\c&HFFFFFF&}} " if who else ""
+                        timeline.append((t + max(lt - a, 0), t + min(end, b) - a, name + text))
+                    s = {**s, "say": "", "src": [a]}
+                else:
+                    s = {**s, "say": s.get("caption", ""), "src": [a]}
             else:
                 tts(s["say"], wav)
             d = duration(wav)
             aparts.append(wav)
             # captions: spread over the scene by character count
-            cs = chunks(s["say"]); total = sum(n for n, _ in cs) or 1; c = t
+            cs = chunks(s["say"]) if s["say"] else []; total = sum(n for n, _ in cs) or 1; c = t
             for n, text in cs:
                 timeline.append((c, c + d * n / total, text)); c += d * n / total
             if s.get("src"):
@@ -212,13 +221,9 @@ def make(script, out):
         else:
             print("warning: no background music found", file=sys.stderr)
             bgm_in, graph = [], graph + "[1:a]anull[ma];"
-        # brand intro (channel/intro.py) in front of every Short
-        n = 3 if bgm else 2
-        fmt = "aformat=sample_rates=44100:channel_layouts=stereo"
-        graph += (f"[{n}:v]setsar=1,format=yuv420p[iv];[mv]setsar=1,format=yuv420p[mv2];[{n}:a]{fmt}[ia];[ma]{fmt}[ma2];"
-                  "[iv][ia][mv2][ma2]concat=n=2:v=1:a=1[v][a]")
-        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in, "-i", INTRO,
-           "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t + duration(INTRO):.3f}",
+        graph = graph.replace("[mv];", "[v];").rstrip(";").replace("[ma]", "[a]")
+        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in,
+           "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out)
     return out
