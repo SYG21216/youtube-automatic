@@ -9,7 +9,7 @@
 - 환경 변수: YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN / PIXABAY_API_KEY / GOOGLE_TTS_KEY
 - `make.py` → `upload.py` 비공개 테스트 성공 (2026-10-14, 테스트 영상 LXyIqUDYnXo, rqRmqOLb_xQ 삭제해도 됨)
 - `upload.py --recent`: 최근 업로드 제목 (주제 중복 방지용)
-- 매일 루틴 등록 (create_trigger, 새 세션 방식, 18시 전후 KST)
+- 루틴: 매일 10:57, 18:57 KST × 3개씩 = 하루 6개 (create_trigger 새 세션 방식)
 
 ## 루틴 한 번 = 이렇게
 1. `python3 shorts/upload.py --recent` 로 지난 주제 확인
