@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """make.py - build a vertical Short from a script: Pixabay clips + Google TTS narration + pop captions.
 
+    python3 make.py script.json --sheet DIR   # candidate thumbnails per scene, pick ids into "clips"
     python3 make.py script.json [-o out.mp4]
 
 script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
      "bgm": "optional file name in shorts/bgm/ (random if omitted)",
-     "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search"}]}
+     "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search",
+                 "clips": [123, 456]}]}   # optional Pixabay ids chosen from --sheet
 
 Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffprobe (with libass).
 """
@@ -44,17 +46,45 @@ def tts(text, out):
             json.dumps(body).encode(), {"Content-Type": "application/json"})
     open(out, "wb").write(base64.b64decode(json.loads(r)["audioContent"]))
 
-def pick_clips(query, n, used):
-    q = urllib.parse.urlencode({"key": os.environ["PIXABAY_API_KEY"], "q": query, "per_page": 30,
-                                "safesearch": "true", "video_type": "film"})
-    hits = [h for h in json.loads(get(f"https://pixabay.com/api/videos/?{q}"))["hits"] if h["id"] not in used][:12]
-    if not hits:
-        sys.exit(f"no pixabay video for query: {query!r}")
+def pixabay(**params):
+    q = urllib.parse.urlencode({"key": os.environ["PIXABAY_API_KEY"], "safesearch": "true", **params})
+    return json.loads(get(f"https://pixabay.com/api/videos/?{q}"))["hits"]
+
+def search(query):
+    hits = pixabay(q=query, per_page=30, video_type="film")[:12]
     # keep relevance order, but vertical first and the dated-looking early stock (low ids) last
     hits.sort(key=lambda h: (h["id"] < OLD_ID, h["videos"]["medium"]["width"] > h["videos"]["medium"]["height"]))
+    return hits
+
+def clip_urls(scene, n, used):
+    """Clips the script picked by id (from --sheet), else best search hits."""
+    if scene.get("clips"):
+        hits = [pixabay(id=i)[0] for i in scene["clips"]]
+    else:
+        hits = [h for h in search(scene["query"]) if h["id"] not in used]
+    if not hits:
+        sys.exit(f"no pixabay video for query: {scene['query']!r}")
     picked = [hits[i % len(hits)] for i in range(n)]
     used.update(h["id"] for h in picked)
     return [h["videos"]["medium"]["url"] or h["videos"]["small"]["url"] for h in picked]
+
+def sheet(script, outdir):
+    """Contact sheet of the top 8 candidates per scene, labelled 0-7, so a human/Claude can pick clip ids."""
+    os.makedirs(outdir, exist_ok=True)
+    for i, s in enumerate(script["scenes"]):
+        hits = search(s["query"])[:8]
+        with tempfile.TemporaryDirectory() as tmp:
+            for n, h in enumerate(hits):
+                # thumbnails come in mixed formats/sizes; normalise each before tiling
+                raw = os.path.join(tmp, f"raw{n}")
+                open(raw, "wb").write(get(h["videos"]["medium"]["thumbnail"]))
+                ff("-i", raw, "-vf", "scale=360:360:force_original_aspect_ratio=decrease,pad=360:360:(ow-iw)/2:(oh-ih)/2,"
+                   f"drawtext=fontfile={os.path.join(font(), 'Pretendard-ExtraBold.otf')}:text='{n}':x=12:y=8:"
+                   "fontsize=56:fontcolor=yellow:borderw=4", os.path.join(tmp, f"{n:02d}.png"))
+            out = os.path.join(outdir, f"scene_{i}.jpg")
+            if hits:
+                ff("-i", os.path.join(tmp, "%02d.png"), "-vf", "tile=4x2", "-frames:v", "1", out)
+        print(f"scene {i} [{s['query']}] {out if hits else 'NO RESULTS'}  " + " ".join(f"{n}={h['id']}" for n, h in enumerate(hits)))
 
 def drive_bgm(tmp):
     """Random mp3 from the channel account's Drive folder DRIVE_BGM (same OAuth token as upload.py)."""
@@ -141,7 +171,7 @@ def make(script, out):
                 timeline.append((c, c + d * n / total, text)); c += d * n / total
             # video: cut the scene into ~CUT-second stock clips
             k = max(1, round(d / CUT))
-            for j, url in enumerate(pick_clips(s["query"], k, used)):
+            for j, url in enumerate(clip_urls(s, k, used)):
                 src, seg = os.path.join(tmp, f"{i}_{j}.src.mp4"), os.path.join(tmp, f"{i}_{j}.mp4")
                 open(src, "wb").write(get(url))
                 ff("-stream_loop", "-1", "-i", src, "-t", f"{d / k:.3f}", "-an", "-vf",
@@ -175,11 +205,13 @@ def make(script, out):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("script"); p.add_argument("-o", "--out", default="short.mp4")
+    p.add_argument("script"); p.add_argument("-o", "--out", default="short.mp4"); p.add_argument("--sheet")
     a = p.parse_args()
     missing = [k for k in ("PIXABAY_API_KEY", "GOOGLE_TTS_KEY") if not os.environ.get(k)]
     if missing: sys.exit(f"missing env: {', '.join(missing)}")
     script = json.load(open(a.script))
+    if a.sheet:
+        sheet(script, a.sheet); sys.exit()
     chars = sum(len(s["say"]) for s in script["scenes"])
     # free-tier guard: 1M TTS chars/month free; 6 shorts/day x 600 x 31 = ~11% of it
     if chars > MAX_TTS_CHARS: sys.exit(f"script too long for the free TTS budget: {chars} > {MAX_TTS_CHARS} chars")
