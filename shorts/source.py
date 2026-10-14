@@ -87,7 +87,11 @@ def srt_to_lines(text):
 def transcribe(video):
     os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
     from faster_whisper import WhisperModel
-    segs, _ = WhisperModel("small", device="cpu", compute_type="int8").transcribe(video, vad_filter=True)
+    import numpy as np  # decode with ffmpeg ourselves: faster-whisper's PyAV path breaks on newer av releases
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", video, "-f", "s16le", "-ac", "1", "-ar", "16000", "-"],
+                         check=True, capture_output=True).stdout
+    audio = np.frombuffer(pcm, np.int16).astype(np.float32) / 32768
+    segs, _ = WhisperModel("small", device="cpu", compute_type="int8").transcribe(audio, vad_filter=True)
     return [f"{s.start:.1f} {s.text.strip()}" for s in segs]
 
 def frames(video, out):
