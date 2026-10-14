@@ -14,8 +14,9 @@ import argparse, base64, glob, json, random, os, subprocess, sys, tempfile, urll
 
 VOICE = "ko-KR-Chirp3-HD-Leda"
 FONT_URL = "https://raw.githubusercontent.com/orioncactus/pretendard/main/packages/pretendard/dist/public/static/Pretendard-ExtraBold.otf"
-BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # royalty-free .mp3 files
-BGM_VOL = 0.18  # under the voice; raise if the music gets lost on phone speakers
+BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # optional local override
+DRIVE_BGM = "쇼츠BGM"  # Drive folder of royalty-free tracks, used when BGM is empty
+BGM_VOL = 0.12  # under the voice; raise if the music gets lost on phone speakers
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
@@ -53,6 +54,24 @@ def pick_clips(query, n, used):
     picked = [hits[i % len(hits)] for i in range(n)]
     used.update(h["id"] for h in picked)
     return [h["videos"]["medium"]["url"] or h["videos"]["small"]["url"] for h in picked]
+
+def drive_bgm(tmp):
+    """Random mp3 from the channel account's Drive folder DRIVE_BGM (same OAuth token as upload.py)."""
+    from upload import access_token
+    try:
+        h = {"Authorization": f"Bearer {access_token()}"}
+        api = "https://www.googleapis.com/drive/v3/files"
+        ls = lambda q: json.loads(get(api + "?" + urllib.parse.urlencode(
+            {"q": q + " and trashed=false", "pageSize": 1000, "fields": "files(id,name)"}), headers=h))["files"]
+        folder = ls(f"name='{DRIVE_BGM}' and mimeType='application/vnd.google-apps.folder'")[0]["id"]
+        files = ls(f"'{folder}' in parents and mimeType='audio/mpeg'")
+        f = random.choice(files)
+        path = os.path.join(tmp, "bgm.mp3")
+        open(path, "wb").write(get(f"{api}/{f['id']}?alt=media", headers=h))
+        print(f"bgm: {f['name']}")
+        return path
+    except Exception as e:  # music is nice-to-have; never block the upload over it
+        print(f"warning: drive bgm failed: {e}", file=sys.stderr)
 
 def duration(path):
     return float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -136,13 +155,16 @@ def make(script, out):
         sub = os.path.join(tmp, "s.ass")
         open(sub, "w").write(ass(script.get("title", ""), timeline))
         bgms = [os.path.join(BGM, script["bgm"])] if script.get("bgm") else glob.glob(os.path.join(BGM, "*.mp3"))
+        bgm = random.choice(bgms) if bgms else drive_bgm(tmp)
         graph = f"[0:v]subtitles={sub}:fontsdir={fontsdir}[v];"
-        if bgms:
-            bgm_in = ["-stream_loop", "-1", "-i", random.choice(bgms)]
+        if bgm:
+            # skip the intro so the music is already moving when the hook lands
+            skip = ["-ss", "25"] if duration(bgm) > 70 else []
+            bgm_in = [*skip, "-stream_loop", "-1", "-i", bgm]
             graph += (f"[2:a]volume={BGM_VOL},afade=t=in:d=0.5,afade=t=out:st={max(0, t - 1.2):.2f}:d=1.2[b];"
                       "[1:a][b]amix=inputs=2:duration=first:normalize=0[a]")
         else:
-            print("warning: shorts/bgm/ is empty - no background music", file=sys.stderr)
+            print("warning: no background music found", file=sys.stderr)
             bgm_in, graph = [], graph + "[1:a]anull[a]"
         ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in,
            "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",

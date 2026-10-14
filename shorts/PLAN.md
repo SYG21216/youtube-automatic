@@ -7,7 +7,7 @@
 ## 완료
 - 채널: 봉투자취 (@봉투자취), 계정 bongtu.jachwi@gmail.com
 - 환경 변수: YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN / PIXABAY_API_KEY / GOOGLE_TTS_KEY
-- `make.py` → `upload.py` 비공개 테스트 성공 (2026-10-14, https://youtube.com/shorts/LXyIqUDYnXo 구버전 - 삭제해도 됨)
+- `make.py` → `upload.py` 비공개 테스트 성공 (2026-10-14, 테스트 영상 LXyIqUDYnXo, rqRmqOLb_xQ 삭제해도 됨)
 - `upload.py --recent`: 최근 업로드 제목 (주제 중복 방지용)
 - 매일 루틴 등록 (create_trigger, 새 세션 방식, 18시 전후 KST)
 
@@ -36,5 +36,6 @@
    ```
 
 ## 배경음악
-`shorts/bgm/*.mp3` 중 하나를 랜덤으로 깔음 (비어 있으면 음악 없이 경고만). 저작권 없는 곡만 넣을 것:
-YouTube 오디오 보관함 "저작자 표시 필요 없음" 또는 Pixabay Music.
+bongtu 드라이브 `쇼츠BGM` 폴더(YouTube 오디오 보관함, 저작자 표시 불필요 곡)에서 영상마다 1곡 랜덤으로 받아
+인트로 25초 건너뛰고 목소리 아래(-10dB 정도)로 깔음. 곡 추가/삭제는 드라이브 폴더에서 하면 됨.
+`shorts/bgm/*.mp3`가 있으면 그게 우선. 드라이브 실패 시 음악 없이 경고만 하고 진행.
