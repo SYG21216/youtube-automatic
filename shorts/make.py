@@ -30,6 +30,8 @@ FIT = ("[0:v]split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase
 PICK_TOP = 520
 FIT_PICK = (f"[0:v]scale=1080:810:force_original_aspect_ratio=increase,crop=1080:810,setsar=1,"
             f"pad=1080:1920:0:{PICK_TOP}:white,fps=30")
+# vertical (phone-shot) source: full-screen picture, white title band over the top
+FIT_PICK_V = f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,drawbox=0:0:1080:{PICK_TOP - 20}:white:t=fill,fps=30"
 GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
@@ -140,6 +142,8 @@ Style: PBrand,Pretendard ExtraBold,50,&H007E2EFF,&H007E2EFF,&H00FFFFFF,&H0000000
 Style: PCap,Pretendard ExtraBold,72,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,7,0,5,60,60,0,1
 Style: PNote,Pretendard ExtraBold,66,&H00000000,&H00000000,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,60,60,1385,1
 Style: PCredit,Pretendard ExtraBold,44,&H00777777,&H00777777,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,60,60,150,1
+Style: PNoteV,Pretendard ExtraBold,58,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,14,0,8,60,60,540,1
+Style: PCreditV,Pretendard ExtraBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,60,60,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -150,10 +154,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     while "*" in t:
         t = t.replace("*", hl, 1).replace("*", base, 1)
     if pick:
+        v = "V" if pick.get("vertical") else ""
+        note = f"* {pick['comment']} *" if v and pick.get("comment") else pick.get("comment", "")
         lines = [f"Dialogue: 1,{ts(0)},{ts(end)},PBrand,,0,0,0,,대신봐드림",
                  f"Dialogue: 1,{ts(0)},{ts(end)},PTitle,,0,0,0,,{t}",
-                 f"Dialogue: 1,{ts(0)},{ts(end)},PNote,,0,0,0,,{pick.get('comment', '')}",
-                 f"Dialogue: 1,{ts(0)},{ts(end)},PCredit,,0,0,0,,{pick.get('credit', '')}"]
+                 f"Dialogue: 1,{ts(0)},{ts(end)},PNote{v},,0,0,0,,{note}",
+                 f"Dialogue: 1,{ts(0)},{ts(end)},PCredit{v},,0,0,0,,{pick.get('credit', '')}"]
     else:
         lines = [f"Dialogue: 1,{ts(0)},{ts(end)},Title,,0,0,0,,{t}"]
     pop = r"{\pos(540,%d)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}" % cap_y
@@ -164,6 +170,10 @@ def make(script, out):
     with tempfile.TemporaryDirectory() as tmp:
         used, fontsdir, t = set(), font(), 0.0
         pick = script if script.get("style") == "pick" else None
+        if pick:
+            w, h = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                            "stream=width,height", "-of", "csv=p=0", script["source"]]).decode().split(",")[:2]
+            pick = {**pick, "vertical": int(h) > int(w)}
         reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
         vparts, aparts, timeline = [], [], []
         for i, s in enumerate(script["scenes"]):
@@ -197,7 +207,7 @@ def make(script, out):
                 for j, st in enumerate(starts):
                     seg = os.path.join(tmp, f"{i}_{j}.mp4")
                     ff("-ss", f"{st:.2f}", "-i", script["source"], "-t", f"{d / len(starts):.3f}", "-an",
-                       "-filter_complex", FIT_PICK if pick else FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                       "-filter_complex", (FIT_PICK_V if pick["vertical"] else FIT_PICK) if pick else FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
                     vparts.append(seg)
                 t += d
                 continue
@@ -216,7 +226,7 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("v.txt", vparts), "-c", "copy", os.path.join(tmp, "v.mp4"))
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
-        cap_y = PICK_TOP + 700 if pick else 1440 if script.get("source") else 1180
+        cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else 1440 if script.get("source") else 1180
         open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick))
         # no background music: original voices and the narration only
         ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"),
