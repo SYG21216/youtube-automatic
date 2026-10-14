@@ -2,7 +2,7 @@
 
 ## 방식
 원본 영상 없이 생성: Claude가 대본 작성 → `make.py` (Pixabay 영상 + Google TTS 나레이션 + 자막, 1080x1920)
-→ `upload.py` (비공개). 드라이브/whisper 단계는 폐기.
+→ `upload.py` (공개). 드라이브/whisper 단계는 폐기.
 
 ## 완료
 - 채널: 봉투자취 (@봉투자취), 계정 bongtu.jachwi@gmail.com
@@ -20,7 +20,7 @@
    - `query`는 화면에 그대로 보일 구체적 영어 명사 1~3단어: "refrigerator", "light switch", "young woman phone"
    - 스타일: Pretendard 팝 자막 + 노란 강조, 2.5초 컷 전환, Chirp3-HD 음성 (make.py가 처리)
 3. `python3 shorts/make.py script.json -o short.mp4`
-4. yt-package 기준으로 제목 정하고 설명란 작성 → `python3 shorts/upload.py short.mp4 --title ... --desc ...`
+4. yt-package 기준으로 제목 정하고 설명란 작성 → `python3 shorts/upload.py short.mp4 --title ... --desc ... --privacy public`
    설명란 형식 (upload.py가 해시태그 3개 미만이면 거부, 해시태그는 태그로도 등록됨):
    ```
    한 줄 요약 (이 영상 보면 뭘 얻는지)
