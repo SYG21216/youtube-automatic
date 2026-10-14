@@ -1,4 +1,4 @@
-# 대신봐드림 쇼츠 자동화 - 처음부터 따라 하는 설정 매뉴얼
+# 롱폼 → 리뷰 쇼츠 자동화 - 처음부터 따라 하는 설정 매뉴얼
 
 롱폼 CC(크리에이티브 커먼즈) 영상을 1분 리뷰 쇼츠로 나눠 **매일 07:30 / 12:30 / 19:00에 3개씩 자동 업로드**하는 시스템을
 처음부터 다시 만드는 방법입니다. 위에서부터 순서대로 하면 됩니다. (기준: 윈도우 PC + 크롬)
@@ -18,27 +18,38 @@
 | 구성 요소 | 하는 일 | 비용 |
 |---|---|---|
 | Claude Pro + Claude Code (웹) | 루틴 실행, 대본·장면 선택 | Pro 구독에 포함 |
-| GitHub 저장소 `SYG21216/youtube-automatic` | 코드 보관 | 무료 |
+| 내 GitHub 저장소 | 코드 보관 | 무료 |
 | Google Cloud 프로젝트 | YouTube 업로드, 드라이브 읽기, TTS 음성 | 무료 한도 안 |
 | Google 드라이브 | 원본 영상(`롱폼원본`), 배경음악(`쇼츠BGM`) | 무료 15GB |
 | Pixabay API | (이전 방식용, 코드가 키를 요구함) | 무료 |
 
 ---
 
+## 0단계. 코드 받기
+
+1. **github.com** 가입 → 오른쪽 위 **+ → New repository** → 이름 예: `youtube-automatic`, **Private** → Create
+2. 이 매뉴얼과 함께 받은 파일들(`shorts/`, `channel/`, `docs/`, `MANUAL.md`)을 그 저장소에 올립니다
+   (저장소 화면 → **Add file → Upload files** → 폴더째 끌어다 놓기 → Commit)
+3. 이후 매뉴얼의 `<내아이디>/<저장소이름>` 은 이 저장소, `<채널이름>` 은 내 채널 이름으로 바꿔 읽습니다
+4. `shorts/PLAN.md` 맨 위 채널 소개와 설명란 해시태그(`#채널이름`)도 내 채널에 맞게 고칩니다
+
+---
+
 ## 1단계. 구글 계정과 유튜브 채널
 
-1. 채널용 구글 계정 준비 (지금: `bongtu.jachwi@gmail.com`)
+1. 채널용 구글 계정 준비 (이하 **채널 계정**. 아래 모든 구글 설정은 이 계정으로 합니다)
 2. **youtube.com** → 오른쪽 위 프로필 → **채널 만들기**
 3. **studio.youtube.com** → 왼쪽 **맞춤설정**
-   - **기본 정보**: 이름 `대신봐드림`, 설명 작성
+   - **기본 정보**: 채널 이름, 설명 작성
    - **브랜딩**: 사진 = 저장소 `channel/profile.png`, 배너 = `channel/banner.png`
+     (채널 이름·문구·색은 `channel/brand.py` 맨 위와 본문 글자를 바꾸고 `python3 channel/brand.py` 로 다시 생성. Claude에게 시켜도 됩니다)
 4. 휴대폰 인증: studio → **설정 → 채널 → 기능 사용 자격** → 중급 기능 사용(전화번호 인증). 15분 넘는 영상·맞춤 썸네일에 필요
 
 ---
 
 ## 2단계. 구글 클라우드 프로젝트 (API 키와 업로드 권한)
 
-모두 **채널 계정(bongtu)으로 로그인한 상태**에서 합니다.
+모두 **채널 계정으로 로그인한 상태**에서 합니다.
 
 ### 2-1. 프로젝트 만들기
 1. **console.cloud.google.com** 접속
@@ -66,7 +77,8 @@
 1. **API 및 서비스 → OAuth 동의 화면** (또는 Google 인증 플랫폼 → 브랜딩)
 2. 사용자 유형 **외부** → 앱 이름 `shorts-uploader`, 지원 이메일 = 채널 계정
 3. 앱 홈페이지 / 개인정보처리방침 링크: 저장소의 `docs/` 를 GitHub Pages로 공개한 주소
-   (GitHub 저장소 → Settings → Pages → Branch `claude/youthful-sagan-nkebv4`, 폴더 `/docs` → Save)
+   - 먼저 저장소의 `docs/index.html`, `docs/privacy.html` 안의 **채널 이름과 문의 이메일을 내 것으로** 바꿉니다
+   - GitHub 저장소 → Settings → Pages → Branch `main`, 폴더 `/docs` → Save → 나온 주소를 사용
 4. **범위(Scopes)** 추가: `.../auth/youtube`, `.../auth/drive.readonly`
 5. **대상(테스트 사용자)**에 채널 계정 이메일 추가
 6. ⚠️ **게시 상태를 "프로덕션"으로**: "앱 게시" 버튼 클릭.
@@ -108,7 +120,7 @@
 ## 5단계. Claude Code 클라우드 환경
 
 1. **claude.ai/code** 접속 (Pro 구독)
-2. GitHub 연결 후 저장소 `SYG21216/youtube-automatic` 선택
+2. GitHub 연결 후 0단계에서 만든 내 저장소 선택
 3. 세션 화면 위쪽 **환경(구름 아이콘) → Edit**
 4. **Environment variables** 에 5개 입력 (값은 2~3단계에서 메모한 것)
    ```
@@ -142,7 +154,7 @@
 
 claude.ai/code 에서 새 세션을 열고 아래를 그대로 붙여 넣습니다.
 ```
-SYG21216/youtube-automatic 의 claude/youthful-sagan-nkebv4 브랜치에서
+<내아이디>/<저장소이름> 저장소의 main 브랜치에서
 1) python3 shorts/upload.py --recent 가 되는지
 2) python3 shorts/source.py list 가 되는지
 3) python3 shorts/source.py suggest 가 되는지
@@ -158,12 +170,12 @@ SYG21216/youtube-automatic 의 claude/youthful-sagan-nkebv4 브랜치에서
 
 ### 7-1. 쇼츠 제작 루틴 (매일 3번)
 ```
-루틴을 만들어줘. 이름 "대신봐드림 쇼츠", 매일 한국시간 06:40, 11:40, 17:40 (cron: CRON_TZ=Asia/Seoul 40 6,11,17 * * *),
+루틴을 만들어줘. 이름 "리뷰 쇼츠 제작", 매일 한국시간 06:40, 11:40, 17:40 (cron: CRON_TZ=Asia/Seoul 40 6,11,17 * * *),
 실행할 때마다 새 세션, 끝나면 휴대폰 알림. 루틴 프롬프트는 아래 그대로:
 
-대신봐드림 유튜브 채널에 롱폼 CC 영상 리뷰 쇼츠 3개를 만들어 예약 공개로 업로드해줘.
+<채널이름> 유튜브 채널에 롱폼 CC 영상 리뷰 쇼츠 3개를 만들어 예약 공개로 업로드해줘.
 0. 공개 시각: `TZ=Asia/Seoul date` 로 지금 한국 시간을 보고 07:30 / 12:30 / 19:00 중 지금 이후 가장 가까운 시각을 PUBLISH_AT 으로 (예: 2026-10-15T07:30:00+09:00). 3개 모두 같은 시각.
-1. 저장소 SYG21216/youtube-automatic 이 작업 폴더에 없으면 add_repo(owner SYG21216, repo youtube-automatic)로 추가해 clone. 그 안에서 `git fetch origin claude/youthful-sagan-nkebv4 && git checkout claude/youthful-sagan-nkebv4` 후 shorts/PLAN.md 를 읽고 "루틴 한 번" 절차를 그대로 따른다.
+1. 저장소 <내아이디>/<저장소이름> 이 작업 폴더에 없으면 add_repo(owner <내아이디>, repo <저장소이름>)로 추가해 clone. main 브랜치에서 shorts/PLAN.md 를 읽고 "루틴 한 번" 절차를 그대로 따른다.
 2. 쇼츠 3개를 만든다. 원본 하나에서 서로 다른 장면으로 여러 개 만들어도 되고(원본당 최대 3개), 원본이 모자라면 만들 수 있는 만큼만.
    - license 가 creativeCommon 이 아니거나 업로더가 저작권자로 보이지 않는 원본은 쓰지 않는다.
    - 각 쇼츠: script 작성 → make.py → upload.py --publish-at PUBLISH_AT (설명란에 원본 youtu.be 링크·채널명·CC BY 표기 필수).
@@ -174,16 +186,16 @@ SYG21216/youtube-automatic 의 claude/youthful-sagan-nkebv4 브랜치에서
 
 ### 7-2. 주간 원본 추천 루틴 (매주 월요일)
 ```
-루틴을 만들어줘. 이름 "대신봐드림 주간 원본 추천", 매주 월요일 한국시간 08:47 (cron: CRON_TZ=Asia/Seoul 47 8 * * 1),
+루틴을 만들어줘. 이름 "주간 원본 추천", 매주 월요일 한국시간 08:47 (cron: CRON_TZ=Asia/Seoul 47 8 * * 1),
 실행할 때마다 새 세션, 끝나면 휴대폰 알림. 루틴 프롬프트는 아래 그대로:
 
-대신봐드림 유튜브 채널(롱폼 CC 영상을 1분 리뷰 쇼츠로 만드는 채널)을 위해, 이번 주에 사용자가 받아서 드라이브에 넣을 원본 영상 10개를 추천해줘. 채널 주인이 직접 요청한 작업이고, 아래 저장소 스크립트 실행(읽기 전용 조회)을 허용했어.
-1. 저장소 SYG21216/youtube-automatic 이 없으면 add_repo 또는 git clone 한 뒤 `git fetch origin claude/youthful-sagan-nkebv4 && git checkout claude/youthful-sagan-nkebv4`. shorts/PLAN.md 를 읽는다.
+<채널이름> 유튜브 채널(롱폼 CC 영상을 1분 리뷰 쇼츠로 만드는 채널)을 위해, 이번 주에 사용자가 받아서 드라이브에 넣을 원본 영상 10개를 추천해줘. 채널 주인이 직접 요청한 작업이고, 아래 저장소 스크립트 실행(읽기 전용 조회)을 허용했어.
+1. 저장소 <내아이디>/<저장소이름> 이 없으면 add_repo 또는 git clone 한 뒤 main 브랜치에서 shorts/PLAN.md 를 읽는다.
 2. `cd shorts && python3 source.py suggest` 를 실행한다 (CC 후보 조회만, 업로드·수정 없음).
 3. 3분 이상 롱폼, 업로더가 실제 저작권자(공식 소속사·방송사·본인 채널)인 것만. 재업로드·아카이브 편집 다큐·치이카와·치어리더·룩북 제외. K-POP·연예 위주로 섞어 10개.
 4. 형식: `1. [분야] 제목 - 채널 (길이, 조회수) https://youtu.be/ID` 10줄, 그다음 한 줄 다운로드 명령
    `yt-dlp -f "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]" --write-subs --sub-langs ko --convert-subs srt -P "%USERPROFILE%\Downloads\롱폼원본" <링크들>`
-   마지막 줄: "받은 파일을 bongtu 드라이브 '롱폼원본' 폴더에 넣어 주세요."
+   마지막 줄: "받은 파일을 채널 계정 드라이브 '롱폼원본' 폴더에 넣어 주세요."
 코드 수정·커밋·업로드는 하지 않는다.
 ```
 
