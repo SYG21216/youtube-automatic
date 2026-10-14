@@ -6,8 +6,8 @@
 
 ## 구성
 - 계정: bongtu.jachwi@gmail.com (채널명 대신봐드림), 환경 변수 YT_* / PIXABAY_API_KEY / GOOGLE_TTS_KEY
-- 원본: 사용자가 bongtu 드라이브 `롱폼원본` 폴더에 넣음. 파일명에 `[유튜브ID]` 필수 (예: `세븐틴 브이로그 [md5zNFKvfvE].mp4`).
-  같은 이름의 .srt/.vtt 가 있으면 자막으로 씀. 없으면 faster-whisper 로 자동 생성 (`*.hf.co` 네트워크 허용 필요)
+- 원본: 사용자가 bongtu 드라이브 `롱폼원본` 폴더에 넣음. 파일명에 `[유튜브ID]` 권장 (예: `세븐틴 브이로그 [md5zNFKvfvE].mp4`).
+  [유튜브ID]가 없으면 파일명(=영상 제목)으로 CC 영상을 찾아 매칭. 같은 이름의 .srt/.vtt 가 있으면 자막으로 씀. 없으면 faster-whisper 로 자동 생성 (`*.hf.co` 네트워크 허용 필요)
 - 클라우드에서 YouTube 직접 다운로드는 봇 차단으로 불가 → 드라이브 경유
 - `source.py` 원본 목록/가져오기 → `make.py` 쇼츠 생성 (원본 구간 + TTS 리뷰 나레이션 + 자막 + BGM + 1초 인트로) → `upload.py` 예약 공개
 - 브랜딩: `channel/brand.py` (프로필, 배너, `shorts/intro.mp4`)
