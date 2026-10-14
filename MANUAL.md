@@ -99,6 +99,12 @@
 4. **채널 계정**으로 로그인 → "확인되지 않은 앱" 경고가 나오면 **고급 → (안전하지 않음)으로 이동** → 허용
 5. **Exchange authorization code for tokens** → 나온 **Refresh token** 메모 → `YT_REFRESH_TOKEN`
 
+> **채널이 브랜드 채널일 때 (개인 계정 아래 만든 채널, 개인 기록과 분리하고 싶을 때)**
+> 브랜드 채널은 자기 드라이브가 없으므로 토큰을 2개 발급합니다.
+> - 업로드용: 권한 `https://www.googleapis.com/auth/youtube` 만, 계정 고르는 화면에서 **브랜드 채널** 선택 → `YT_REFRESH_TOKEN`
+> - 드라이브용: 권한 `https://www.googleapis.com/auth/drive.readonly` 만, **개인 계정** 선택 → `DRIVE_REFRESH_TOKEN`
+> - 4단계 드라이브 폴더는 개인 계정 드라이브에 만듭니다
+
 ---
 
 ## 3단계. Pixabay API 키
@@ -129,6 +135,7 @@
    YT_REFRESH_TOKEN=...
    GOOGLE_TTS_KEY=...
    PIXABAY_API_KEY=...
+   DRIVE_REFRESH_TOKEN=...   (브랜드 채널일 때만)
    ```
 5. **Network access → Allowed domains** 에 아래 추가 ("Allow package managers"는 체크 유지)
    ```
