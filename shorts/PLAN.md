@@ -16,9 +16,6 @@
 
 ## 루틴 한 번 = 이렇게
 0. `pip install -q faster-whisper` (자막 없는 원본용)
-0-1. **밀린 대본 먼저**: `shorts/pending/pending.json` 의 항목 중 제목이 `upload.py --recent` 에 아직 없는 것부터 처리한다.
-   `python3 shorts/source.py fetch <source_drive_id> src1/` (같은 원본이면 한 번만) → `python3 shorts/make.py <script> -o short.mp4`
-   → 항목의 title/desc 그대로 업로드. 이렇게 올린 개수도 이번 실행의 3개에 포함
 1. `python3 shorts/source.py list` → `n/3 made` 인 원본 중 하나 고름 (`done`·`skip` 제외). 원본 하나로 서로 다른 장면 쇼츠 최대 3개.
    쓸 원본이 없으면 만들지 말고 "롱폼원본에 새 영상 필요"라고 보고하고 끝낸다.
 2. `python3 shorts/source.py fetch <drive_id> src/` → `src/meta.json`, `src/transcript.txt`(초 단위 시작시각 + 대사), `src/frames.jpg`(타임스탬프 24장)
