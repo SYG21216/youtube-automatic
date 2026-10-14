@@ -5,14 +5,17 @@
 
 script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
+     "bgm": "optional file name in shorts/bgm/ (random if omitted)",
      "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search"}]}
 
 Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffprobe (with libass).
 """
-import argparse, base64, json, os, subprocess, sys, tempfile, urllib.parse, urllib.request
+import argparse, base64, glob, json, random, os, subprocess, sys, tempfile, urllib.parse, urllib.request
 
 VOICE = "ko-KR-Chirp3-HD-Leda"
 FONT_URL = "https://raw.githubusercontent.com/orioncactus/pretendard/main/packages/pretendard/dist/public/static/Pretendard-ExtraBold.otf"
+BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # royalty-free .mp3 files
+BGM_VOL = 0.18  # under the voice; raise if the music gets lost on phone speakers
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
@@ -132,9 +135,17 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
         open(sub, "w").write(ass(script.get("title", ""), timeline))
-        # ponytail: no BGM - Pixabay music has no API; add a royalty-free loop with amix if wanted
-        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), "-map", "0:v", "-map", "1:a",
-           "-vf", f"subtitles={sub}:fontsdir={fontsdir}", "-t", f"{t:.3f}",
+        bgms = [os.path.join(BGM, script["bgm"])] if script.get("bgm") else glob.glob(os.path.join(BGM, "*.mp3"))
+        graph = f"[0:v]subtitles={sub}:fontsdir={fontsdir}[v];"
+        if bgms:
+            bgm_in = ["-stream_loop", "-1", "-i", random.choice(bgms)]
+            graph += (f"[2:a]volume={BGM_VOL},afade=t=in:d=0.5,afade=t=out:st={max(0, t - 1.2):.2f}:d=1.2[b];"
+                      "[1:a][b]amix=inputs=2:duration=first:normalize=0[a]")
+        else:
+            print("warning: shorts/bgm/ is empty - no background music", file=sys.stderr)
+            bgm_in, graph = [], graph + "[1:a]anull[a]"
+        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in,
+           "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out)
     return out

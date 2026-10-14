@@ -18,7 +18,8 @@ def access_token():
 
 def upload(path, title, desc, privacy):
     tok = access_token()
-    meta = {"snippet": {"title": title[:100], "description": desc, "categoryId": "26",
+    tags = [w.lstrip("#") for w in desc.split() if w.startswith("#")]
+    meta = {"snippet": {"title": title[:100], "description": desc, "tags": tags, "categoryId": "26",
                         "defaultLanguage": "ko", "defaultAudioLanguage": "ko"},
             "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
     req = urllib.request.Request(
@@ -51,5 +52,6 @@ if __name__ == "__main__":
     if a.recent:
         print("\n".join(recent())); sys.exit()
     if not (a.video and a.title): p.error("video and --title are required")
+    if a.desc.count("#") < 3: p.error("--desc needs a content summary and at least 3 #hashtags")
     vid = upload(a.video, a.title, a.desc, a.privacy)
     print(f"https://youtube.com/shorts/{vid}")

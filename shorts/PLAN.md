@@ -20,4 +20,21 @@
    - `query`는 화면에 그대로 보일 구체적 영어 명사 1~3단어: "refrigerator", "light switch", "young woman phone"
    - 스타일: Pretendard 팝 자막 + 노란 강조, 2.5초 컷 전환, Chirp3-HD 음성 (make.py가 처리)
 3. `python3 shorts/make.py script.json -o short.mp4`
-4. yt-package 기준으로 제목 → `python3 shorts/upload.py short.mp4 --title ... --desc "...\n\n영상: Pixabay"`
+4. yt-package 기준으로 제목 정하고 설명란 작성 → `python3 shorts/upload.py short.mp4 --title ... --desc ...`
+   설명란 형식 (upload.py가 해시태그 3개 미만이면 거부, 해시태그는 태그로도 등록됨):
+   ```
+   한 줄 요약 (이 영상 보면 뭘 얻는지)
+
+   ✅ 핵심 1 (숫자/구체어)
+   ✅ 핵심 2
+   ✅ 핵심 3
+
+   저장해두고 공과금 나올 때 꺼내보세요!
+
+   #자취 #자취꿀팁 #자취생 #혼자살기 #사회초년생 #주제태그1 #주제태그2 #생활꿀팁 #shorts
+   영상: Pixabay
+   ```
+
+## 배경음악
+`shorts/bgm/*.mp3` 중 하나를 랜덤으로 깔음 (비어 있으면 음악 없이 경고만). 저작권 없는 곡만 넣을 것:
+YouTube 오디오 보관함 "저작자 표시 필요 없음" 또는 Pixabay Music.
