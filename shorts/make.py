@@ -19,6 +19,7 @@ FONT_URL = "https://raw.githubusercontent.com/orioncactus/pretendard/main/packag
 BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # optional local override
 DRIVE_BGM = "쇼츠BGM"  # Drive folder of royalty-free tracks, used when BGM is empty
 BGM_VOL = 0.084  # under the voice; raise if the music gets lost on phone speakers
+INTRO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "intro.mp4")  # rebuild with channel/intro.py
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 MAX_TTS_CHARS = 700  # per Short; keeps Google TTS far inside its free tier
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
@@ -187,18 +188,23 @@ def make(script, out):
         open(sub, "w").write(ass(script.get("title", ""), timeline))
         bgms = [os.path.join(BGM, script["bgm"])] if script.get("bgm") else glob.glob(os.path.join(BGM, "*.mp3"))
         bgm = random.choice(bgms) if bgms else drive_bgm(tmp)
-        graph = f"[0:v]subtitles={sub}:fontsdir={fontsdir}[v];"
+        graph = f"[0:v]subtitles={sub}:fontsdir={fontsdir}[mv];"
         if bgm:
             # skip the intro so the music is already moving when the hook lands
             skip = ["-ss", "25"] if duration(bgm) > 70 else []
             bgm_in = [*skip, "-stream_loop", "-1", "-i", bgm]
             graph += (f"[2:a]volume={BGM_VOL},afade=t=in:d=0.5,afade=t=out:st={max(0, t - 1.2):.2f}:d=1.2[b];"
-                      "[1:a][b]amix=inputs=2:duration=first:normalize=0[a]")
+                      "[1:a][b]amix=inputs=2:duration=first:normalize=0[ma];")
         else:
             print("warning: no background music found", file=sys.stderr)
-            bgm_in, graph = [], graph + "[1:a]anull[a]"
-        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in,
-           "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",
+            bgm_in, graph = [], graph + "[1:a]anull[ma];"
+        # brand intro (channel/intro.py) in front of every Short
+        n = 3 if bgm else 2
+        fmt = "aformat=sample_rates=44100:channel_layouts=stereo"
+        graph += (f"[{n}:v]setsar=1,format=yuv420p[iv];[mv]setsar=1,format=yuv420p[mv2];[{n}:a]{fmt}[ia];[ma]{fmt}[ma2];"
+                  "[iv][ia][mv2][ma2]concat=n=2:v=1:a=1[v][a]")
+        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *bgm_in, "-i", INTRO,
+           "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-t", f"{t + duration(INTRO):.3f}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out)
     return out

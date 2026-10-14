@@ -20,6 +20,7 @@
      피할 것: "~해", "~하자", "~임", "ㄹㅇ" 같은 반말·은어
    - 첫 장면 = 훅 (손해·돈 얘기로 바로 시작). 마지막 장면 = 저장/팔로우 유도 한 줄
    - `query`는 화면에 그대로 보일 구체적 영어 명사 1~3단어: "refrigerator", "light switch", "young woman phone"
+   - 모든 영상 맨 앞에 1초 브랜드 인트로 `shorts/intro.mp4` 자동 삽입 (수정은 `channel/intro.py`로 다시 생성)
    - 스타일: Pretendard 팝 자막 + 노란 강조, 2.5초 컷 전환, Chirp3-HD 음성 (make.py가 처리)
 3. **영상 고르기 (필수)**: `python3 shorts/make.py script.json --sheet sheets/` → 장면마다 후보 8개 썸네일(번호 0~7)이
    `sheets/scene_N.jpg`로 나옴. 이미지를 직접 보고 맞는 것만 골라 그 장면의 `"clips": [id, ...]`에 넣는다 (번호→id는 출력에 있음).
