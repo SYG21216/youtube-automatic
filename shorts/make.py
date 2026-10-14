@@ -18,6 +18,7 @@ BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # optiona
 DRIVE_BGM = "쇼츠BGM"  # Drive folder of royalty-free tracks, used when BGM is empty
 BGM_VOL = 0.12  # under the voice; raise if the music gets lost on phone speakers
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+MAX_TTS_CHARS = 600  # per Short; keeps Google TTS far inside its free tier
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
 YELLOW = r"{\c&H00E0FF&}"
@@ -178,7 +179,11 @@ if __name__ == "__main__":
     a = p.parse_args()
     missing = [k for k in ("PIXABAY_API_KEY", "GOOGLE_TTS_KEY") if not os.environ.get(k)]
     if missing: sys.exit(f"missing env: {', '.join(missing)}")
-    out = make(json.load(open(a.script)), a.out)
+    script = json.load(open(a.script))
+    chars = sum(len(s["say"]) for s in script["scenes"])
+    # free-tier guard: 1M TTS chars/month free; 6 shorts/day x 600 x 31 = ~11% of it
+    if chars > MAX_TTS_CHARS: sys.exit(f"script too long for the free TTS budget: {chars} > {MAX_TTS_CHARS} chars")
+    out = make(script, a.out)
     d = duration(out)
     print(f"{out} ({d:.1f}s)")
     if d > 59: print("warning: over 59s", file=sys.stderr)
