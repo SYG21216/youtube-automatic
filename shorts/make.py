@@ -20,7 +20,7 @@ BGM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bgm")  # optiona
 DRIVE_BGM = "쇼츠BGM"  # Drive folder of royalty-free tracks, used when BGM is empty
 BGM_VOL = 0.084  # under the voice; raise if the music gets lost on phone speakers
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
-MAX_TTS_CHARS = 600  # per Short; keeps Google TTS far inside its free tier
+MAX_TTS_CHARS = 700  # per Short; keeps Google TTS far inside its free tier
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
 YELLOW = r"{\c&H00E0FF&}"
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     if a.sheet:
         sheet(script, a.sheet); sys.exit()
     chars = sum(len(s["say"]) for s in script["scenes"])
-    # free-tier guard: 1M TTS chars/month free; 6 shorts/day x 600 x 31 = ~11% of it
+    # free-tier guard: 1M TTS chars/month free; 9 shorts/day x 700 x 31 = ~20% of it
     if chars > MAX_TTS_CHARS: sys.exit(f"script too long for the free TTS budget: {chars} > {MAX_TTS_CHARS} chars")
     out = make(script, a.out)
     d = duration(out)
