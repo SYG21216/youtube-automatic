@@ -2,6 +2,7 @@
 """upload.py - upload one video to YouTube with only the stdlib.
 
     python3 upload.py video.mp4 --title "..." [--desc "..."] [--privacy private|unlisted|public]
+    python3 upload.py --recent          # titles of the channel's last 50 uploads, to avoid repeats
 
 Reads YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN from the environment.
 A vertical video under 3 minutes is treated as a Short by YouTube automatically.
@@ -34,12 +35,21 @@ def upload(path, title, desc, privacy):
         with urllib.request.urlopen(put) as r:
             return json.load(r)["id"]
 
+def recent():
+    h = {"Authorization": f"Bearer {access_token()}"}
+    get = lambda u: json.load(urllib.request.urlopen(urllib.request.Request("https://www.googleapis.com/youtube/v3/" + u, headers=h)))
+    pl = get("channels?part=contentDetails&mine=true")["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    return [i["snippet"]["title"] for i in get(f"playlistItems?part=snippet&maxResults=50&playlistId={pl}")["items"]]
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("video"); p.add_argument("--title", required=True)
+    p.add_argument("video", nargs="?"); p.add_argument("--title"); p.add_argument("--recent", action="store_true")
     p.add_argument("--desc", default=""); p.add_argument("--privacy", default="private")
     a = p.parse_args()
     missing = [k for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN") if not os.environ.get(k)]
     if missing: sys.exit(f"missing env: {', '.join(missing)}")
+    if a.recent:
+        print("\n".join(recent())); sys.exit()
+    if not (a.video and a.title): p.error("video and --title are required")
     vid = upload(a.video, a.title, a.desc, a.privacy)
     print(f"https://youtube.com/shorts/{vid}")
