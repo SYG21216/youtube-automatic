@@ -9,7 +9,7 @@
 - 환경 변수: YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN / PIXABAY_API_KEY / GOOGLE_TTS_KEY
 - `make.py` → `upload.py` 비공개 테스트 성공 (2026-10-14, 테스트 영상 LXyIqUDYnXo, rqRmqOLb_xQ 삭제해도 됨)
 - `upload.py --recent`: 최근 업로드 제목 (주제 중복 방지용)
-- 루틴: 06:40, 11:40, 18:10 KST에 제작 시작 → 07:30, 12:30, 19:00에 3개씩 예약 공개 (`--publish-at`) = 하루 9개
+- 루틴: 06:40, 11:40, 17:40 KST에 제작 시작 → 07:30, 12:30, 19:00에 3개씩 예약 공개 (`--publish-at`) = 하루 9개
 
 ## 루틴 한 번 = 이렇게
 1. `python3 shorts/upload.py --recent` 로 지난 주제 확인
