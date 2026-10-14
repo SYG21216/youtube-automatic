@@ -7,6 +7,7 @@
 script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
      "bgm": "optional file name in shorts/bgm/ (random if omitted)",
+     "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query",
      "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search",
                  "clips": [123, 456]}]}   # optional Pixabay ids chosen from --sheet
 
@@ -22,6 +23,9 @@ BGM_VOL = 0.084  # under the voice; raise if the music gets lost on phone speake
 INTRO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "intro.mp4")  # rebuild with channel/intro.py
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 MAX_TTS_CHARS = 700  # per Short; keeps Google TTS far inside its free tier
+# 16:9 source -> 9:16: sharp picture across the middle, blurred zoomed copy behind it
+FIT = ("[0:v]split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:5,"
+       "eq=brightness=-0.12[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,fps=30,setsar=1")
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
 YELLOW = r"{\c&H00E0FF&}"
@@ -89,19 +93,11 @@ def sheet(script, outdir):
 
 def drive_bgm(tmp):
     """Random mp3 from the channel account's Drive folder DRIVE_BGM (same OAuth token as upload.py)."""
-    from upload import access_token
+    from upload import drive_ls, drive_get
     try:
-        h = {"Authorization": f"Bearer {access_token()}"}
-        api = "https://www.googleapis.com/drive/v3/files"
-        ls = lambda q: json.loads(get(api + "?" + urllib.parse.urlencode(
-            {"q": q + " and trashed=false", "pageSize": 1000, "fields": "files(id,name)"}), headers=h))["files"]
-        folder = ls(f"name='{DRIVE_BGM}' and mimeType='application/vnd.google-apps.folder'")[0]["id"]
-        files = ls(f"'{folder}' in parents and mimeType='audio/mpeg'")
-        f = random.choice(files)
-        path = os.path.join(tmp, "bgm.mp3")
-        open(path, "wb").write(get(f"{api}/{f['id']}?alt=media", headers=h))
+        f = random.choice(drive_ls(DRIVE_BGM, "audio/"))
         print(f"bgm: {f['name']}")
-        return path
+        return drive_get(f["id"], os.path.join(tmp, "bgm.mp3"))
     except Exception as e:  # music is nice-to-have; never block the upload over it
         print(f"warning: drive bgm failed: {e}", file=sys.stderr)
 
@@ -134,7 +130,7 @@ def chunks(say):
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline):
+def ass(title, timeline, cap_y=1180):
     head = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -153,7 +149,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     while "*" in t:
         t = t.replace("*", YELLOW, 1).replace("*", r"{\c&HFFFFFF&}", 1)
     lines = [f"Dialogue: 1,{ts(0)},{ts(end)},Title,,0,0,0,,{t}"]
-    pop = r"{\pos(540,1180)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}"
+    pop = r"{\pos(540,%d)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}" % cap_y
     lines += [f"Dialogue: 0,{ts(a)},{ts(b)},Cap,,0,0,0,,{pop}{text}" for a, b, text in timeline]
     return head + "\n".join(lines) + "\n"
 
@@ -170,6 +166,16 @@ def make(script, out):
             cs = chunks(s["say"]); total = sum(n for n, _ in cs) or 1; c = t
             for n, text in cs:
                 timeline.append((c, c + d * n / total, text)); c += d * n / total
+            if s.get("src"):
+                # review mode: cuts of the source video at the given start times, fitted over a blurred copy
+                starts = s["src"]
+                for j, st in enumerate(starts):
+                    seg = os.path.join(tmp, f"{i}_{j}.mp4")
+                    ff("-ss", f"{st:.2f}", "-i", script["source"], "-t", f"{d / len(starts):.3f}", "-an",
+                       "-filter_complex", FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                    vparts.append(seg)
+                t += d
+                continue
             # video: cut the scene into ~CUT-second stock clips
             k = max(1, round(d / CUT))
             for j, url in enumerate(clip_urls(s, k, used)):
@@ -185,7 +191,7 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("v.txt", vparts), "-c", "copy", os.path.join(tmp, "v.mp4"))
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
-        open(sub, "w").write(ass(script.get("title", ""), timeline))
+        open(sub, "w").write(ass(script.get("title", ""), timeline, 1440 if script.get("source") else 1180))
         bgms = [os.path.join(BGM, script["bgm"])] if script.get("bgm") else glob.glob(os.path.join(BGM, "*.mp3"))
         bgm = random.choice(bgms) if bgms else drive_bgm(tmp)
         graph = f"[0:v]subtitles={sub}:fontsdir={fontsdir}[mv];"
