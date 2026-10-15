@@ -20,6 +20,7 @@ Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffpr
 import argparse, base64, json, random, os, subprocess, sys, tempfile, urllib.parse, urllib.request
 
 VOICE = "ko-KR-Chirp3-HD-Kore"
+BRAND = "대신봐드림"  # channel name shown in the pick-style header
 FONT_URL = "https://raw.githubusercontent.com/orioncactus/pretendard/main/packages/pretendard/dist/public/static/Pretendard-ExtraBold.otf"
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 MAX_TTS_CHARS = 700  # per Short; keeps Google TTS far inside its free tier
@@ -156,7 +157,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if pick:
         v = "V" if pick.get("vertical") else ""
         note = f"* {pick['comment']} *" if v and pick.get("comment") else pick.get("comment", "")
-        lines = [f"Dialogue: 1,{ts(0)},{ts(end)},PBrand,,0,0,0,,대신봐드림",
+        lines = [f"Dialogue: 1,{ts(0)},{ts(end)},PBrand,,0,0,0,,{BRAND}",
                  f"Dialogue: 1,{ts(0)},{ts(end)},PTitle,,0,0,0,,{t}",
                  f"Dialogue: 1,{ts(0)},{ts(end)},PNote{v},,0,0,0,,{note}",
                  f"Dialogue: 1,{ts(0)},{ts(end)},PCredit{v},,0,0,0,,{pick.get('credit', '')}"]
