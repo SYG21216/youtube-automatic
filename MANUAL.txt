@@ -44,10 +44,11 @@
      공개 범위       : Public   ← 6단계 GitHub Pages 를 무료로 쓰려면 Public 이어야 함
                                  (키·비밀번호는 코드에 절대 넣지 않고 5단계 환경 변수에만 넣으므로 공개해도 안전)
    → Create repository
-3. 새 저장소 화면 → "uploading an existing file" (또는 Add file → Upload files)
-   → 받은 폴더 안의 shorts, channel, docs 폴더와 MANUAL.txt, PROMPTS.txt 를 폴더째 끌어다 놓기
+3. 받은 shorts-automation.zip 을 압축 풀기 (우클릭 → 압축 풀기)
+   새 저장소 화면 → "uploading an existing file" (또는 Add file → Upload files)
+   → 풀린 shorts-automation 폴더 "안의" shorts, channel, docs 폴더와 MANUAL.txt, PROMPTS.txt 를 한꺼번에 끌어다 놓기
    → 아래 [Commit changes]
-   (shorts/__pycache__, shorts/.cache 폴더가 있으면 올리지 않아도 됨)
+   ★ shorts-automation 폴더 자체를 올리면 안 됩니다. 저장소 첫 화면에 shorts / channel / docs 가 바로 보여야 정상.
 4. 이제부터 아래 표기는 이렇게 바꿔 읽습니다.
      <아이디>     = 내 GitHub 아이디
      <저장소>     = 2번에서 정한 저장소 이름
