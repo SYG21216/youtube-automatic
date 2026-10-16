@@ -41,7 +41,9 @@ def find_id(name):
 
 SEARCHES = ["아이돌 브이로그", "아이돌 비하인드", "kpop behind", "jpop", "pop music behind", "연예인 비하인드",
             "브이로그", "해외 생활", "외국 이야기", "로블록스", "생활꿀팁",
-            "예능", "예능 레전드", "코미디빅리그", "1박2일", "개그", "몰래카메라", "웃긴 영상"]
+            "예능", "예능 레전드", "코미디빅리그", "1박2일", "개그", "몰래카메라", "웃긴 영상",
+            "걸그룹", "girl group behind", "직캠", "fancam", "콘서트", "concert behind", "룩북", "lookbook",
+            "강아지", "고양이", "puppy", "cute cat", "반려동물"]
 
 def cmd_suggest():
     """CC candidates per category (read-only): already used/downloaded ids removed, best first by views."""

@@ -50,7 +50,6 @@ def banner():
       <div style="position:absolute;left:507px;top:508px;width:1546px;height:423px;display:flex;align-items:center;justify-content:center;gap:70px">
         <div style="width:330px;height:314px;flex:none">{logo(0.6).replace(f'stroke="{DARK}" stroke-width="16"', 'stroke="#3A3346" stroke-width="16"').replace(f'rx="56" fill="{DARK}"', 'rx="56" fill="#3A3346"')}</div>
         <div><div style="font-size:108px;color:{WHITE};letter-spacing:-3px;line-height:1.1">긴 영상,<br><span style="color:{PINK}">대신 봐드림</span></div>
-          <div style="margin-top:22px;font-size:42px;color:#B9B4C6">K-POP · 연예계 · 브이로그 · 외국 이야기 · 로블록스 · 생활꿀팁</div>
           <div style="display:inline-block;margin-top:28px;background:{PINK};color:{WHITE};font-size:40px;padding:12px 34px;border-radius:999px">매일 1분 요약</div></div>
       </div></div>""", 2560, 1440, os.path.join(ROOT, "channel", "banner.png"))
 
