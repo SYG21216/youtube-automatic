@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """source.py - long-form source videos for 대신봐드림 review Shorts, from the Drive folder 롱폼원본.
 
-    python3 source.py suggest           # CC candidates to download, per category (read-only)
+    python3 source.py suggest [QUERY..] # CC candidates to download, per category or given queries (read-only)
     python3 source.py list              # videos in 롱폼원본: drive id, YouTube id, shorts already made from it
     python3 source.py fetch DRIVE_ID DIR # DIR/video.*, meta.json (YouTube title/channel/license), transcript.txt, frames.jpg
 
@@ -45,11 +45,11 @@ SEARCHES = ["아이돌 브이로그", "아이돌 비하인드", "kpop behind", "
             "걸그룹", "girl group behind", "직캠", "fancam", "콘서트", "concert behind", "룩북", "lookbook",
             "강아지", "고양이", "puppy", "cute cat", "반려동물"]
 
-def cmd_suggest():
+def cmd_suggest(queries=None):
     """CC candidates per category (read-only): already used/downloaded ids removed, best first by views."""
     seen = {src for _, src in recent()} | {find_id(f["name"]) for f in drive_ls(FOLDER, "video/")}
     after = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for q in SEARCHES:
+    for q in queries or SEARCHES:
         ids = [h["id"]["videoId"] for h in api("https://www.googleapis.com/youtube/v3/search?" + urllib.parse.urlencode(
             {"part": "snippet", "type": "video", "videoLicense": "creativeCommon", "q": q, "maxResults": 15,
              "order": "viewCount", "publishedAfter": after, "relevanceLanguage": "ko"}))["items"]]
@@ -133,7 +133,7 @@ def cmd_fetch(file_id, outdir):
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "suggest":
-        cmd_suggest()
+        cmd_suggest(sys.argv[2:])
     elif len(sys.argv) >= 2 and sys.argv[1] == "list":
         cmd_list()
     elif len(sys.argv) == 4 and sys.argv[1] == "fetch":
