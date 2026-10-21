@@ -36,6 +36,7 @@ FIT_PICK_V = f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=10
 GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
+END_NOTE = "추천템은 프로필 링크에서!"  # last seconds of every Short; points at the channel's affiliate link ("" to turn off)
 CAPTIONS = False  # spoken-line / narration captions; the title (and pick comment/credit) always show
 YELLOW = r"{\c&H00E0FF&}"
 OLD_ID = 100000  # ponytail: Pixabay ids below this are ~2015-2021 uploads; tune if picks look dated
@@ -145,6 +146,7 @@ Style: PCap,Pretendard ExtraBold,72,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,
 Style: PNote,Pretendard ExtraBold,66,&H00000000,&H00000000,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,60,60,1385,1
 Style: PCredit,Pretendard ExtraBold,44,&H00777777,&H00777777,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,60,60,150,1
 Style: PNoteV,Pretendard ExtraBold,58,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,14,0,8,60,60,540,1
+Style: End,Pretendard ExtraBold,58,&H00FFFFFF,&H00FFFFFF,&H007E2EFF,&H00000000,0,0,0,0,100,100,0,0,3,16,0,5,60,60,0,1
 Style: PCreditV,Pretendard ExtraBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,60,60,120,1
 
 [Events]
@@ -165,6 +167,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     else:
         lines = [f"Dialogue: 1,{ts(0)},{ts(end)},Title,,0,0,0,,{t}"]
     pop = r"{\pos(540,%d)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}" % cap_y
+    if END_NOTE and end > 3:
+        lines.append(f"Dialogue: 2,{ts(end - 2.5)},{ts(end)},End,,0,0,0,,{{\\pos(540,1660)\\fad(200,0)}}{END_NOTE}")
     if CAPTIONS:
         lines += [f"Dialogue: 0,{ts(a)},{ts(b)},{'PCap' if pick else 'Cap'},,0,0,0,,{pop}{text}" for a, b, text in timeline]
     return head + "\n".join(lines) + "\n"
