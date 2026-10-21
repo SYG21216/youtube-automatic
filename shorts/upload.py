@@ -20,7 +20,12 @@ def access_token(drive=False):
     with urllib.request.urlopen("https://oauth2.googleapis.com/token", body) as r:
         return json.load(r)["access_token"]
 
+# Coupang Partners requires this exact sentence wherever the affiliate link is promoted (every Short points to it)
+DISCLOSURE = "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다."
+
 def upload(path, title, desc, privacy, publish_at=None):
+    if DISCLOSURE not in desc:
+        desc = desc.rstrip() + "\n\n" + DISCLOSURE
     tok = access_token()
     tags = [w.lstrip("#") for w in desc.split() if w.startswith("#")]
     meta = {"snippet": {"title": title[:100], "description": desc, "tags": tags, "categoryId": "26",
