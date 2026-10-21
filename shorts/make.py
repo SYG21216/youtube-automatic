@@ -11,6 +11,7 @@ script.json:
      "voice": "optional Google TTS voice name (default VOICE)",
      "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query,
                 or {"orig": [start, end], "lines": [[start, "도겸", "what they say"], ...]} to play the original
+                (any scene may add "label": "삶의 질" - a red keyword box shown during that scene)
                 moment with its own sound, captioned per line with the speaker's name ("" when unsure)",
      "scenes": [{"say": "나레이션 문장, *강조 단어*는 노란 자막", "query": "english pixabay search",
                  "clips": [123, 456]}]}   # optional Pixabay ids chosen from --sheet
@@ -130,7 +131,7 @@ def chunks(say):
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180, pick=None):
+def ass(title, timeline, cap_y=1180, pick=None, labels=()):
     head = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -146,6 +147,7 @@ Style: PCap,Pretendard ExtraBold,72,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,
 Style: PNote,Pretendard ExtraBold,66,&H00000000,&H00000000,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,60,60,1385,1
 Style: PCredit,Pretendard ExtraBold,44,&H00777777,&H00777777,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,60,60,150,1
 Style: PNoteV,Pretendard ExtraBold,58,&H005AFF3C,&H005AFF3C,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,14,0,8,60,60,540,1
+Style: Label,Pretendard ExtraBold,64,&H00FFFFFF,&H00FFFFFF,&H002A2AE8,&H00000000,0,0,0,0,100,100,0,0,3,14,0,5,60,60,0,1
 Style: End,Pretendard ExtraBold,58,&H00FFFFFF,&H00FFFFFF,&H007E2EFF,&H00000000,0,0,0,0,100,100,0,0,3,16,0,5,60,60,0,1
 Style: PCreditV,Pretendard ExtraBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,60,60,120,1
 
@@ -169,6 +171,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     pop = r"{\pos(540,%d)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}" % cap_y
     if END_NOTE and end > 3:
         lines.append(f"Dialogue: 2,{ts(end - 2.5)},{ts(end)},End,,0,0,0,,{{\\pos(540,1660)\\fad(200,0)}}{END_NOTE}")
+    # per-scene keyword label (꿀템 style: one red box per item)
+    lines += [f"Dialogue: 1,{ts(a)},{ts(b)},Label,,0,0,0,,{{\\pos(540,{cap_y})}}{text}" for a, b, text in labels]
     if CAPTIONS:
         lines += [f"Dialogue: 0,{ts(a)},{ts(b)},{'PCap' if pick else 'Cap'},,0,0,0,,{pop}{text}" for a, b, text in timeline]
     return head + "\n".join(lines) + "\n"
@@ -182,7 +186,7 @@ def make(script, out):
                                             "stream=width,height", "-of", "csv=p=0", script["source"]]).decode().split(",")[:2]
             pick = {**pick, "vertical": int(h) > int(w)}
         reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
-        vparts, aparts, timeline = [], [], []
+        vparts, aparts, timeline, labels = [], [], [], []
         for i, s in enumerate(script["scenes"]):
             wav = os.path.join(tmp, f"{i}.wav")
             if s.get("orig"):
@@ -203,6 +207,8 @@ def make(script, out):
             else:
                 tts(s["say"], wav, script.get("voice", VOICE))
             d = duration(wav)
+            if s.get("label"):
+                labels.append((t, t + d, s["label"]))
             aparts.append(wav)
             # captions: spread over the scene by character count
             cs = chunks(s["say"]) if s["say"] else []; total = sum(n for n, _ in cs) or 1; c = t
@@ -234,7 +240,7 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
         cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else 1440 if script.get("source") else 1180
-        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick))
+        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels))
         # no background music: original voices and the narration only
         ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"),
            "-vf", f"subtitles={sub}:fontsdir={fontsdir}", "-map", "0:v", "-map", "1:a", "-t", f"{t:.3f}",
