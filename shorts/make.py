@@ -40,6 +40,8 @@ STORY_TOP = 500
 FIT_STORY = (f"scale=1080:810:force_original_aspect_ratio=increase,crop=1080:810,setsar=1,"
              f"pad=1080:1920:0:{STORY_TOP}:black,fps=30")
 GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
+DRIVE_BGM = "쇼츠BGM"
+BGM_VOL = 0.06  # story style only: just audible under the narration
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
 END_NOTE = "추천템은 프로필 링크에서!"  # last seconds of every Short; points at the channel's affiliate link ("" to turn off)
@@ -76,6 +78,20 @@ def tts(text, out, voice=VOICE):
 def pixabay(**params):
     q = urllib.parse.urlencode({"key": os.environ["PIXABAY_API_KEY"], "safesearch": "true", **params})
     return json.loads(get(f"https://pixabay.com/api/videos/?{q}"))["hits"]
+
+def pixabay_images(query):
+    q = urllib.parse.urlencode({"key": os.environ["PIXABAY_API_KEY"], "q": query, "image_type": "photo", "safesearch": "true", "per_page": 20})
+    return json.loads(get(f"https://pixabay.com/api/?{q}"))["hits"]
+
+def drive_bgm(tmp):
+    """Random track from the Drive folder 쇼츠BGM (YouTube Audio Library, no attribution needed); story style only."""
+    from upload import drive_ls, drive_get
+    try:
+        f = random.choice(drive_ls(DRIVE_BGM, "audio/"))
+        print(f"bgm: {f['name']}")
+        return drive_get(f["id"], os.path.join(tmp, "bgm.mp3"))
+    except Exception as e:  # music is nice-to-have; never block the upload over it
+        print(f"warning: drive bgm failed: {e}", file=sys.stderr)
 
 def search(query):
     hits = pixabay(q=query, per_page=30, video_type="film")[:12]
@@ -237,13 +253,16 @@ def make(script, out):
                 t += d
                 continue
             if s.get("img"):
-                # a still picture (e.g. a Wikimedia Commons CC image), slow zoom so it doesn't look frozen
-                src, seg = os.path.join(tmp, f"{i}.img"), os.path.join(tmp, f"{i}.mp4")
-                open(src, "wb").write(get(s["img"]) if s["img"].startswith("http") else open(s["img"], "rb").read())
-                ff("-loop", "1", "-i", src, "-t", f"{d:.3f}", "-vf",
-                   f"scale=1300:-2,zoompan=z='1+0.0008*on':d=1:s=1080x810:fps=30,{FIT_STORY if story else 'pad=1080:1920:0:555:black'}",
-                   "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
-                vparts.append(seg)
+                # still pictures (Pixabay / Wikimedia Commons, see source.py images), slow zoom so they don't look frozen
+                imgs = s["img"] if isinstance(s["img"], list) else [s["img"]]
+                for j, im in enumerate(imgs):
+                    src, seg = os.path.join(tmp, f"{i}_{j}.img"), os.path.join(tmp, f"{i}_{j}.mp4")
+                    open(src, "wb").write(get(im) if im.startswith("http") else open(im, "rb").read())
+                    ff("-loop", "1", "-i", src, "-t", f"{d / len(imgs):.3f}", "-vf",
+                       "scale=1300:975:force_original_aspect_ratio=increase,crop=1300:975,"
+                       f"zoompan=z='1+0.0008*on':d=1:s=1080x810:fps=30,{FIT_STORY if story else 'pad=1080:1920:0:555:black'}",
+                       "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                    vparts.append(seg)
                 t += d
                 continue
             # video: cut the scene into ~CUT-second stock clips
@@ -267,9 +286,13 @@ def make(script, out):
         sub = os.path.join(tmp, "s.ass")
         cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else STORY_TOP + 930 if story else 1440 if script.get("source") else 1180
         open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story))
-        # no background music: original voices and the narration only
-        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"),
-           "-vf", f"subtitles={sub}:fontsdir={fontsdir}", "-map", "0:v", "-map", "1:a", "-t", f"{t:.3f}",
+        # background music only for story style (others keep the original voices clean)
+        bgm = drive_bgm(tmp) if story else None
+        mus = ["-stream_loop", "-1", "-i", bgm] if bgm else []
+        amix = (f"[2:a]volume={BGM_VOL},afade=t=out:st={max(0, t - 1.5):.2f}:d=1.5[b];[1:a][b]amix=inputs=2:duration=first:normalize=0[a]"
+                if bgm else "[1:a]anull[a]")
+        ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *mus,
+           "-filter_complex", f"[0:v]subtitles={sub}:fontsdir={fontsdir}[v];{amix}", "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out)
     return out

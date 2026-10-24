@@ -4,6 +4,7 @@
     python3 source.py suggest [QUERY..] # CC candidates to download, per category or given queries (read-only)
     python3 source.py list              # videos in 롱폼원본: drive id, YouTube id, shorts already made from it
     python3 source.py fetch DRIVE_ID DIR # DIR/video.*, meta.json (YouTube title/channel/license), transcript.txt, frames.jpg
+    python3 source.py images QUERY      # free-to-use pictures for story Shorts: Pixabay + Wikimedia Commons, with license/author
 
 File names should contain the YouTube id in brackets, e.g. "세븐틴 브이로그 [md5zNFKvfvE].mp4" (yt-dlp's default);
 otherwise the exact video title is looked up among CC videos.
@@ -64,6 +65,30 @@ def cmd_suggest(queries=None):
                 continue
             dur = v["contentDetails"]["duration"].replace("PT", "").lower()
             print(f"{v['id']}\t{int(v['statistics'].get('viewCount', 0)):>9}\t{dur}\t{v['snippet']['channelTitle']}\t{v['snippet']['title']}")
+
+FREE = re.compile(r"^(cc0|cc by(-sa)? [\d.]+|public domain|pd)", re.I)
+
+def cmd_images(query):
+    """Picture candidates whose license allows reuse in a video. Commons needs the credit line in the description."""
+    import urllib.request
+    from make import pixabay_images
+    for h in pixabay_images(query)[:8]:
+        print(f"{h['largeImageURL']}\tPixabay License (표기 불필요)\t{h['user']}\t{h['pageURL']}")
+    url = "https://commons.wikimedia.org/w/api.php?" + urllib.parse.urlencode(
+        {"action": "query", "format": "json", "generator": "search", "gsrnamespace": 6, "gsrsearch": query,
+         "gsrlimit": 12, "prop": "imageinfo", "iiprop": "url|extmetadata", "iiurlwidth": 1280})
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "daesinbwa-shorts/1.0"})
+        pages = json.load(urllib.request.urlopen(req)).get("query", {}).get("pages", {}).values()
+    except Exception as e:  # commons.wikimedia.org not in the network allow-list
+        print(f"warning: Wikimedia Commons unreachable ({e})", file=sys.stderr); return
+    for pg in pages:
+        ii = pg["imageinfo"][0]; md = ii.get("extmetadata", {})
+        lic = md.get("LicenseShortName", {}).get("value", "")
+        if not FREE.match(lic):
+            continue
+        who = re.sub("<[^>]+>", "", md.get("Artist", {}).get("value", "")).strip()
+        print(f"{ii.get('thumburl', ii['url'])}\t{lic} (표기 필요: {who} / Wikimedia Commons)\t{who}\t{ii['descriptionurl']}")
 
 def cmd_list():
     used = {}
@@ -137,6 +162,8 @@ if __name__ == "__main__":
         cmd_suggest(sys.argv[2:])
     elif len(sys.argv) >= 2 and sys.argv[1] == "list":
         cmd_list()
+    elif len(sys.argv) >= 3 and sys.argv[1] == "images":
+        cmd_images(" ".join(sys.argv[2:]))
     elif len(sys.argv) == 4 and sys.argv[1] == "fetch":
         cmd_fetch(sys.argv[2], sys.argv[3])
     else:
