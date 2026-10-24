@@ -6,7 +6,8 @@
 
 script.json:
     {"title": "상단 고정 제목\\n*강조*는 노란색",
-     "style": "optional "pick": 하루한픽 layout - white header/footer, no TTS, original-audio scenes only,
+     "style": "optional "story": 이슈 썰 layout - black screen, Pixabay clips or {"img": url} stills in a middle band, narration captions;
+               "pick": 하루한픽 layout - white header/footer, no TTS, original-audio scenes only,
                with "comment" (one reaction line under the video) and "credit" (출처 line)",
      "voice": "optional Google TTS voice name (default VOICE)",
      "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query,
@@ -18,7 +19,7 @@ script.json:
 
 Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffprobe (with libass).
 """
-import argparse, base64, json, random, os, subprocess, sys, tempfile, urllib.parse, urllib.request
+import argparse, base64, json, random, os, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 
 VOICE = "ko-KR-Chirp3-HD-Kore"
 BRAND = "대신봐드림"  # channel name shown in the pick-style header
@@ -34,6 +35,10 @@ FIT_PICK = (f"[0:v]scale=1080:810:force_original_aspect_ratio=increase,crop=1080
             f"pad=1080:1920:0:{PICK_TOP}:white,fps=30")
 # vertical (phone-shot) source: full-screen picture, white title band over the top
 FIT_PICK_V = f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,drawbox=0:0:1080:{PICK_TOP - 20}:white:t=fill,fps=30"
+# "story" style (이슈 썰): black screen, title on top, picture band in the middle, narration captions under it
+STORY_TOP = 500
+FIT_STORY = (f"scale=1080:810:force_original_aspect_ratio=increase,crop=1080:810,setsar=1,"
+             f"pad=1080:1920:0:{STORY_TOP}:black,fps=30")
 GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
@@ -45,8 +50,14 @@ OLD_ID = 100000  # ponytail: Pixabay ids below this are ~2015-2021 uploads; tune
 def get(url, data=None, headers={}):
     # Pixabay 403s the default urllib User-Agent
     req = urllib.request.Request(url, data=data, headers={"User-Agent": "Mozilla/5.0", **headers})
-    with urllib.request.urlopen(req) as r:
-        return r.read()
+    for wait in (3, 0):  # Pixabay's CDN sometimes answers 429
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or not wait:
+                raise
+            time.sleep(wait)
 
 def font():
     path = os.path.join(CACHE, "Pretendard-ExtraBold.otf")
@@ -131,7 +142,7 @@ def chunks(say):
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180, pick=None, labels=()):
+def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS):
     head = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -173,7 +184,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         lines.append(f"Dialogue: 2,{ts(end - 2.5)},{ts(end)},End,,0,0,0,,{{\\pos(540,1660)\\fad(200,0)}}{END_NOTE}")
     # per-scene keyword label (꿀템 style: one red box per item)
     lines += [f"Dialogue: 1,{ts(a)},{ts(b)},Label,,0,0,0,,{{\\pos(540,{cap_y})}}{text}" for a, b, text in labels]
-    if CAPTIONS:
+    if captions:
         lines += [f"Dialogue: 0,{ts(a)},{ts(b)},{'PCap' if pick else 'Cap'},,0,0,0,,{pop}{text}" for a, b, text in timeline]
     return head + "\n".join(lines) + "\n"
 
@@ -185,6 +196,7 @@ def make(script, out):
             w, h = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                                             "stream=width,height", "-of", "csv=p=0", script["source"]]).decode().split(",")[:2]
             pick = {**pick, "vertical": int(h) > int(w)}
+        story = script.get("style") == "story"
         reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
         vparts, aparts, timeline, labels = [], [], [], []
         for i, s in enumerate(script["scenes"]):
@@ -224,13 +236,27 @@ def make(script, out):
                     vparts.append(seg)
                 t += d
                 continue
+            if s.get("img"):
+                # a still picture (e.g. a Wikimedia Commons CC image), slow zoom so it doesn't look frozen
+                src, seg = os.path.join(tmp, f"{i}.img"), os.path.join(tmp, f"{i}.mp4")
+                open(src, "wb").write(get(s["img"]) if s["img"].startswith("http") else open(s["img"], "rb").read())
+                ff("-loop", "1", "-i", src, "-t", f"{d:.3f}", "-vf",
+                   f"scale=1300:-2,zoompan=z='1+0.0008*on':d=1:s=1080x810:fps=30,{FIT_STORY if story else 'pad=1080:1920:0:555:black'}",
+                   "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                vparts.append(seg)
+                t += d
+                continue
             # video: cut the scene into ~CUT-second stock clips
             k = max(1, round(d / CUT))
             for j, url in enumerate(clip_urls(s, k, used)):
                 src, seg = os.path.join(tmp, f"{i}_{j}.src.mp4"), os.path.join(tmp, f"{i}_{j}.mp4")
-                open(src, "wb").write(get(url))
+                try:
+                    data = get(url)
+                except urllib.error.HTTPError:  # ponytail: one fallback clip when the CDN refuses this one
+                    data = get(clip_urls({"query": s.get("query", "")}, 1, used)[0])
+                open(src, "wb").write(data)
                 ff("-stream_loop", "-1", "-i", src, "-t", f"{d / k:.3f}", "-an", "-vf",
-                   "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
+                   FIT_STORY if story else "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
                    "eq=saturation=1.15:contrast=1.05,setsar=1",
                    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
                 vparts.append(seg)
@@ -239,8 +265,8 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("v.txt", vparts), "-c", "copy", os.path.join(tmp, "v.mp4"))
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
-        cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else 1440 if script.get("source") else 1180
-        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels))
+        cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else STORY_TOP + 930 if story else 1440 if script.get("source") else 1180
+        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story))
         # no background music: original voices and the narration only
         ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"),
            "-vf", f"subtitles={sub}:fontsdir={fontsdir}", "-map", "0:v", "-map", "1:a", "-t", f"{t:.3f}",
