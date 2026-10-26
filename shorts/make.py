@@ -10,6 +10,7 @@ script.json:
                "pick": 하루한픽 layout - white header/footer, no TTS, original-audio scenes only,
                with "comment" (one reaction line under the video) and "credit" (출처 line)",
      "voice": "optional Google TTS voice name (default VOICE)",
+     "shop": true for product Shorts only - shows the "추천템은 프로필 링크에서!" end note,
      "source": "optional local long-form video; then scenes use "src": [start seconds, ...] instead of query,
                 or {"orig": [start, end], "lines": [[start, "도겸", "what they say"], ...]} to play the original
                 (any scene may add "label": "삶의 질" - a red keyword box shown during that scene)
@@ -44,7 +45,7 @@ DRIVE_BGM = "쇼츠BGM"
 BGM_VOL = 0.06  # story style only: just audible under the narration
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
-END_NOTE = "추천템은 프로필 링크에서!"  # last seconds of every Short; points at the channel's affiliate link ("" to turn off)
+END_NOTE = "추천템은 프로필 링크에서!"  # last seconds of product Shorts ("shop": true); points at the profile affiliate link
 CAPTIONS = False  # spoken-line / narration captions; the title (and pick comment/credit) always show
 YELLOW = r"{\c&H00E0FF&}"
 OLD_ID = 100000  # ponytail: Pixabay ids below this are ~2015-2021 uploads; tune if picks look dated
@@ -158,7 +159,7 @@ def chunks(say):
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS):
+def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False):
     head = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -196,7 +197,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     else:
         lines = [f"Dialogue: 1,{ts(0)},{ts(end)},Title,,0,0,0,,{t}"]
     pop = r"{\pos(540,%d)\fscx75\fscy75\t(0,90,\fscx105\fscy105)\t(90,160,\fscx100\fscy100)}" % cap_y
-    if END_NOTE and end > 3:
+    if shop and END_NOTE and end > 3:
         lines.append(f"Dialogue: 2,{ts(end - 2.5)},{ts(end)},End,,0,0,0,,{{\\pos(540,1660)\\fad(200,0)}}{END_NOTE}")
     # per-scene keyword label (꿀템 style: one red box per item)
     lines += [f"Dialogue: 1,{ts(a)},{ts(b)},Label,,0,0,0,,{{\\pos(540,{cap_y})}}{text}" for a, b, text in labels]
@@ -285,7 +286,7 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
         cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else STORY_TOP + 930 if story else 1440 if script.get("source") else 1180
-        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story))
+        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False)))
         # background music only for story style (others keep the original voices clean)
         bgm = drive_bgm(tmp) if story else None
         mus = ["-stream_loop", "-1", "-i", bgm] if bgm else []
@@ -318,4 +319,4 @@ if __name__ == "__main__":
     out = make(script, a.out)
     d = duration(out)
     print(f"{out} ({d:.1f}s)")
-    if d > 59: print("warning: over 59s", file=sys.stderr)
+    if d > 179: print("warning: over 3 minutes - YouTube will not treat it as a Short", file=sys.stderr)

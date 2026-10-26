@@ -24,7 +24,7 @@ def access_token(drive=False):
 DISCLOSURE = "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다."
 
 def upload(path, title, desc, privacy, publish_at=None):
-    if DISCLOSURE not in desc:
+    if ("쿠팡" in desc or "추천템" in desc) and DISCLOSURE not in desc:  # only where the affiliate link is promoted
         desc = desc.rstrip() + "\n\n" + DISCLOSURE
     tok = access_token()
     tags = [w.lstrip("#") for w in desc.split() if w.startswith("#")]
