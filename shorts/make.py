@@ -177,7 +177,7 @@ def chunks(say):
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False):
+def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False, total=0):
     head = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -200,7 +200,7 @@ Style: PCreditV,Pretendard ExtraBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    end = timeline[-1][1] if timeline else 0
+    end = total or (timeline[-1][1] if timeline else 0)  # captionless Shorts (live clips) still need the header for the whole video
     t = title.replace("\\n", "\n").replace("\n", r"\N")
     hl, base = (r"{\c&H7E2EFF&}", r"{\c&H000000&}") if pick else (YELLOW, r"{\c&HFFFFFF&}")
     while "*" in t:
@@ -306,7 +306,7 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
         cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else STORY_TOP + 930 if story else 1440 if script.get("source") else 1180
-        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False)))
+        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False), t))
         # background music only for story style (others keep the original voices clean)
         bgm = drive_bgm(tmp) if story else None
         mus = ["-stream_loop", "-1", "-i", bgm] if bgm else []
