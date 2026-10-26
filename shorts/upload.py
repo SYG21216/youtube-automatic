@@ -9,7 +9,7 @@ Reads YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN from the environment
 (optional DRIVE_REFRESH_TOKEN: a different Google account for Drive, e.g. when the channel is a Brand Account).
 A vertical video under 3 minutes is treated as a Short by YouTube automatically.
 """
-import argparse, datetime, json, os, re, shutil, sys, urllib.parse, urllib.request
+import argparse, difflib, datetime, json, os, re, shutil, sys, urllib.parse, urllib.request
 
 def access_token(drive=False):
     # A Brand Account channel has no Drive of its own, so Drive may use a separate token (DRIVE_REFRESH_TOKEN)
@@ -73,19 +73,28 @@ def drive_get(file_id, path):
     return path
 
 def recent():
-    """(title, source YouTube id or "") of the last 50 uploads; the id comes from the 원본 link in the description."""
+    """(title, source YouTube id or "") of every upload, newest first; the id comes from the 원본 link in the description."""
     pl = api("https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true")["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-    items = api(f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId={pl}")["items"]
-    out = []
-    for i in items:
-        m = re.search(r"youtu\.be/([A-Za-z0-9_-]{11})", i["snippet"]["description"])
-        out.append((i["snippet"]["title"], m.group(1) if m else ""))
-    return out
+    out, tok = [], ""
+    while True:  # all pages: per-source counts and duplicate checks must see the whole channel
+        r = api(f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId={pl}" + (f"&pageToken={tok}" if tok else ""))
+        for i in r["items"]:
+            m = re.search(r"youtu\.be/([A-Za-z0-9_-]{11})", i["snippet"]["description"])
+            out.append((i["snippet"]["title"], m.group(1) if m else ""))
+        tok = r.get("nextPageToken")
+        if not tok:
+            return out
+
+def similar(title, titles, limit=0.55):
+    """An existing title that tells the same story, if any (ignores the "하루한픽 |" prefix and punctuation)."""
+    norm = lambda t: re.sub(r"[^0-9a-z가-힣]", "", t.split("|")[-1].lower())
+    return next((t for t in titles if difflib.SequenceMatcher(None, norm(title), norm(t)).ratio() >= limit), None)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("video", nargs="?"); p.add_argument("--title"); p.add_argument("--recent", action="store_true")
     p.add_argument("--desc", default=""); p.add_argument("--privacy", default="private")
+    p.add_argument("--not-duplicate", action="store_true", help="the title resembles an old one but the story is different")
     p.add_argument("--publish-at", help="ISO time with offset, e.g. 2026-10-15T07:30:00+09:00")
     a = p.parse_args()
     missing = [k for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN") if not os.environ.get(k)]
@@ -94,5 +103,7 @@ if __name__ == "__main__":
         print("\n".join(f"{t}\t{src}" for t, src in recent())); sys.exit()
     if not (a.video and a.title): p.error("video and --title are required")
     if a.desc.count("#") < 3: p.error("--desc needs a content summary and at least 3 #hashtags")
+    dup = None if a.not_duplicate else similar(a.title, [t for t, _ in recent()])
+    if dup: sys.exit(f"possible duplicate: already uploaded {dup!r}. If it really is a different moment/story, rerun with --not-duplicate")
     vid = upload(a.video, a.title, a.desc, a.privacy, a.publish_at)
     print(f"https://youtube.com/shorts/{vid}")

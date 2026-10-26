@@ -20,7 +20,7 @@ script.json:
 
 Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffprobe (with libass).
 """
-import argparse, base64, json, random, os, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
+import argparse, base64, json, re, random, os, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 
 VOICE = "ko-KR-Chirp3-HD-Kore"
 BRAND = "대신봐드림"  # channel name shown in the pick-style header
@@ -70,11 +70,18 @@ def font():
     return CACHE
 
 def tts(text, out, voice=VOICE):
-    body = {"input": {"text": text.replace("*", "")}, "voice": {"languageCode": "ko-KR", "name": voice},
+    # "..." makes Chirp voices stop for ~0.6s mid-sentence; a comma keeps the flow
+    text = re.sub(r"\s*(\.{2,}|…)+\s*", ", ", text.replace("*", "")).strip(", ")
+    body = {"input": {"text": text}, "voice": {"languageCode": "ko-KR", "name": voice},
             "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 44100, "speakingRate": 1.2}}
     r = get(f"https://texttospeech.googleapis.com/v1/text:synthesize?key={os.environ['GOOGLE_TTS_KEY']}",
             json.dumps(body).encode(), {"Content-Type": "application/json"})
-    open(out, "wb").write(base64.b64decode(json.loads(r)["audioContent"]))
+    raw = out + ".raw.wav"
+    open(raw, "wb").write(base64.b64decode(json.loads(r)["audioContent"]))
+    # each scene is synthesized separately; trim the silence at both ends so scenes join without dead air
+    trim = "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05"
+    ff("-i", raw, "-af", f"{trim},areverse,{trim},areverse,apad=pad_dur=0.15", "-ac", "1", "-ar", "44100", out)
+    os.remove(raw)
 
 def pixabay(**params):
     q = urllib.parse.urlencode({"key": os.environ["PIXABAY_API_KEY"], "safesearch": "true", **params})
@@ -129,6 +136,17 @@ def sheet(script, outdir):
             if hits:
                 ff("-i", os.path.join(tmp, "%02d.png"), "-vf", "tile=4x2", "-frames:v", "1", out)
         print(f"scene {i} [{s['query']}] {out if hits else 'NO RESULTS'}  " + " ".join(f"{n}={h['id']}" for n, h in enumerate(hits)))
+
+def snap(span, starts):
+    """Widen an original-audio span to whole transcript lines so nobody is cut off mid-sentence:
+    start at the line that is playing at `a`, end where the line playing at `b` finishes (= next line's start)."""
+    a, b = span
+    if not starts:
+        return a, b
+    a2 = max([t for t in starts if t <= a + 0.3] or [a])
+    later = [t for t in starts if t > b - 0.3]
+    b2 = later[0] if later else b
+    return a2, max(b2, b)
 
 def duration(path):
     return float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -216,11 +234,13 @@ def make(script, out):
         story = script.get("style") == "story"
         reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
         vparts, aparts, timeline, labels = [], [], [], []
+        tr = os.path.join(os.path.dirname(script.get("source", "")), "transcript.txt")
+        starts = sorted(float(l.split()[0]) for l in open(tr) if l.strip()) if script.get("source") and os.path.exists(tr) else []
         for i, s in enumerate(script["scenes"]):
             wav = os.path.join(tmp, f"{i}.wav")
             if s.get("orig"):
                 # the people's own voices: play the source moment with its sound, captioned
-                a, b = s["orig"]
+                a, b = snap(s["orig"], starts)
                 ff("-ss", f"{a:.2f}", "-t", f"{b - a:.2f}", "-i", script["source"], "-vn",
                    "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", wav)
                 if s.get("lines"):
