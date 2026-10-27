@@ -40,6 +40,9 @@ FIT_PICK_V = f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=10
 STORY_TOP = 500
 FIT_STORY = (f"scale=1080:810:force_original_aspect_ratio=increase,crop=1080:810,setsar=1,"
              f"pad=1080:1920:0:{STORY_TOP}:black,fps=30")
+# "doc" style (연예인 다큐 롱폼): 1920x1080, full-frame pictures, narration captions at the bottom
+FIT_DOC = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30,setsar=1"
+MAX_DOC_TTS_CHARS = 6000  # one long-form a day ≈ 190k chars/month, still far inside the 1M free tier
 GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
 DRIVE_BGM = "쇼츠BGM"
 BGM_VOL = 0.06  # story style only: just audible under the narration
@@ -155,7 +158,7 @@ def duration(path):
 def ff(*args):
     subprocess.run(["ffmpeg", "-y", "-v", "error", *args], check=True)
 
-def chunks(say):
+def chunks(say, limit=CHUNK):
     """Split narration into short caption pops, keeping *highlight* spans across splits."""
     out, cur, hl = [], [], False
     for word in say.split():
@@ -167,18 +170,33 @@ def chunks(say):
             else:
                 styled += ch
         plain = "".join(w for w, _ in cur) + word.replace("*", "")
-        if cur and len(plain) > CHUNK:
+        if cur and len(plain) > limit:
             out.append(cur); cur = []
         cur.append((word.replace("*", ""), styled))
     out.append(cur)
     # each chunk: (plain length for timing, styled ASS text that resets colour at the end)
     return [(len("".join(p for p, _ in c)), " ".join(s for _, s in c) + r"{\c&HFFFFFF&}") for c in out]
 
+DOC_HEAD = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: DTitle,Pretendard ExtraBold,96,&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,0,0,0,0,100,100,0,0,1,8,4,5,120,120,0,1
+Style: DLabel,Pretendard ExtraBold,54,&H00FFFFFF,&H00FFFFFF,&H007E2EFF,&H00000000,0,0,0,0,100,100,0,0,3,14,0,7,80,80,70,1
+Style: DCap,Pretendard ExtraBold,58,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,5,2,2,160,160,70,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False, total=0):
-    head = """[Script Info]
+def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False, total=0, doc=False):
+    head = DOC_HEAD if doc else """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
@@ -205,6 +223,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     hl, base = (r"{\c&H7E2EFF&}", r"{\c&H000000&}") if pick else (YELLOW, r"{\c&HFFFFFF&}")
     while "*" in t:
         t = t.replace("*", hl, 1).replace("*", base, 1)
+    if doc:  # title card only at the start; chapters come in as labels, narration as captions
+        lines = [f"Dialogue: 1,{ts(0)},{ts(min(6, end))},DTitle,,0,0,0,,{{\\fad(300,500)}}{t}"]
+        lines += [f"Dialogue: 1,{ts(a)},{ts(min(b, a + 4))},DLabel,,0,0,0,,{{\\fad(200,300)}}{text}" for a, b, text in labels]
+        lines += [f"Dialogue: 0,{ts(a)},{ts(b)},DCap,,0,0,0,,{text}" for a, b, text in timeline]
+        return head + "\n".join(lines) + "\n"
     if pick:
         v = "V" if pick.get("vertical") else ""
         note = f"* {pick['comment']} *" if v and pick.get("comment") else pick.get("comment", "")
@@ -232,16 +255,23 @@ def make(script, out):
                                             "stream=width,height", "-of", "csv=p=0", script["source"]]).decode().split(",")[:2]
             pick = {**pick, "vertical": int(h) > int(w)}
         story = script.get("style") == "story"
+        doc = script.get("style") == "doc"
         reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
         vparts, aparts, timeline, labels = [], [], [], []
         tr = os.path.join(os.path.dirname(script.get("source", "")), "transcript.txt")
         starts = sorted(float(l.split()[0]) for l in open(tr) if l.strip()) if script.get("source") and os.path.exists(tr) else []
         for i, s in enumerate(script["scenes"]):
             wav = os.path.join(tmp, f"{i}.wav")
+            source = s.get("source", script.get("source"))  # a doc can mix several CC source videos
+            if source != script.get("source"):
+                tr2 = os.path.join(os.path.dirname(source or ""), "transcript.txt")
+                starts_s = sorted(float(l.split()[0]) for l in open(tr2) if l.strip()) if source and os.path.exists(tr2) else []
+            else:
+                starts_s = starts
             if s.get("orig"):
                 # the people's own voices: play the source moment with its sound, captioned
-                a, b = snap(s["orig"], starts)
-                ff("-ss", f"{a:.2f}", "-t", f"{b - a:.2f}", "-i", script["source"], "-vn",
+                a, b = snap(s["orig"], starts_s)
+                ff("-ss", f"{a:.2f}", "-t", f"{b - a:.2f}", "-i", source, "-vn",
                    "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", wav)
                 if s.get("lines"):
                     # [[start sec, speaker or "", text], ...] -> one caption per line, speaker name in pink
@@ -260,7 +290,7 @@ def make(script, out):
                 labels.append((t, t + d, s["label"]))
             aparts.append(wav)
             # captions: spread over the scene by character count
-            cs = chunks(s["say"]) if s["say"] else []; total = sum(n for n, _ in cs) or 1; c = t
+            cs = chunks(s["say"], 24 if doc else CHUNK) if s["say"] else []; total = sum(n for n, _ in cs) or 1; c = t
             for n, text in cs:
                 timeline.append((c, c + d * n / total, text)); c += d * n / total
             if s.get("src"):
@@ -268,8 +298,8 @@ def make(script, out):
                 starts = s["src"]
                 for j, st in enumerate(starts):
                     seg = os.path.join(tmp, f"{i}_{j}.mp4")
-                    ff("-ss", f"{st:.2f}", "-i", script["source"], "-t", f"{d / len(starts):.3f}", "-an",
-                       "-filter_complex", (FIT_PICK_V if pick["vertical"] else FIT_PICK) if pick else FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                    ff("-ss", f"{st:.2f}", "-i", source, "-t", f"{d / len(starts):.3f}", "-an",
+                       "-filter_complex", "[0:v]" + FIT_DOC if doc else (FIT_PICK_V if pick["vertical"] else FIT_PICK) if pick else FIT, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
                     vparts.append(seg)
                 t += d
                 continue
@@ -280,8 +310,9 @@ def make(script, out):
                     src, seg = os.path.join(tmp, f"{i}_{j}.img"), os.path.join(tmp, f"{i}_{j}.mp4")
                     open(src, "wb").write(get(im) if im.startswith("http") else open(im, "rb").read())
                     ff("-loop", "1", "-i", src, "-t", f"{d / len(imgs):.3f}", "-vf",
-                       "scale=1300:975:force_original_aspect_ratio=increase,crop=1300:975,"
-                       f"zoompan=z='1+0.0008*on':d=1:s=1080x810:fps=30,{FIT_STORY if story else 'pad=1080:1920:0:555:black'}",
+                       ("scale=2300:1294:force_original_aspect_ratio=increase,crop=2300:1294,zoompan=z='1+0.0006*on':d=1:s=1920x1080:fps=30,setsar=1" if doc else
+                        "scale=1300:975:force_original_aspect_ratio=increase,crop=1300:975,"
+                        f"zoompan=z='1+0.0008*on':d=1:s=1080x810:fps=30,{FIT_STORY if story else 'pad=1080:1920:0:555:black'}"),
                        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
                     vparts.append(seg)
                 t += d
@@ -296,7 +327,7 @@ def make(script, out):
                     data = get(clip_urls({"query": s.get("query", "")}, 1, used)[0])
                 open(src, "wb").write(data)
                 ff("-stream_loop", "-1", "-i", src, "-t", f"{d / k:.3f}", "-an", "-vf",
-                   FIT_STORY if story else "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
+                   FIT_DOC if doc else FIT_STORY if story else "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
                    "eq=saturation=1.15:contrast=1.05,setsar=1",
                    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
                 vparts.append(seg)
@@ -306,9 +337,9 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
         cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else STORY_TOP + 930 if story else 1440 if script.get("source") else 1180
-        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False), t))
+        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False), t, doc))
         # background music only for story style (others keep the original voices clean)
-        bgm = drive_bgm(tmp) if story else None
+        bgm = drive_bgm(tmp) if story or doc else None
         mus = ["-stream_loop", "-1", "-i", bgm] if bgm else []
         amix = (f"[2:a]volume={BGM_VOL},afade=t=out:st={max(0, t - 1.5):.2f}:d=1.5[b];[1:a][b]amix=inputs=2:duration=first:normalize=0[a]"
                 if bgm else "[1:a]anull[a]")
@@ -326,7 +357,7 @@ if __name__ == "__main__":
     says = [i for i, s in enumerate(script["scenes"]) if s.get("say")]
     if script.get("style") == "pick" and says: sys.exit("pick style has no narration: use orig scenes only")
     # review style: narration only as the opening hook and the closing line; the middle is the people themselves
-    if script.get("source") and set(says) - {0, len(script["scenes"]) - 1}:
+    if script.get("source") and script.get("style") != "doc" and set(says) - {0, len(script["scenes"]) - 1}:
         sys.exit("narration only in the first and last scene; middle scenes must be orig")
     need = (["GOOGLE_TTS_KEY"] if says else []) + ([] if script.get("source") else ["PIXABAY_API_KEY"])
     missing = [k for k in need if not os.environ.get(k)]
@@ -335,8 +366,9 @@ if __name__ == "__main__":
         sheet(script, a.sheet); sys.exit()
     chars = sum(len(s.get("say", "")) for s in script["scenes"])
     # free-tier guard: 1M TTS chars/month free; 9 shorts/day x 700 x 31 = ~20% of it
-    if chars > MAX_TTS_CHARS: sys.exit(f"script too long for the free TTS budget: {chars} > {MAX_TTS_CHARS} chars")
+    cap = MAX_DOC_TTS_CHARS if script.get("style") == "doc" else MAX_TTS_CHARS
+    if chars > cap: sys.exit(f"script too long for the free TTS budget: {chars} > {cap} chars")
     out = make(script, a.out)
     d = duration(out)
     print(f"{out} ({d:.1f}s)")
-    if d > 179: print("warning: over 3 minutes - YouTube will not treat it as a Short", file=sys.stderr)
+    if d > 179 and script.get("style") != "doc": print("warning: over 3 minutes - YouTube will not treat it as a Short", file=sys.stderr)

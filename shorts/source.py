@@ -46,7 +46,8 @@ SEARCHES = ["아이돌 브이로그", "아이돌 비하인드", "kpop behind", "
             "걸그룹", "girl group behind", "직캠", "fancam", "콘서트", "concert behind", "룩북", "lookbook",
             "강아지", "고양이", "puppy", "cute cat", "반려동물",
             "생활꿀템", "살림템", "자취템", "가성비 추천템", "다이소 추천", "제품 리뷰",
-            "라이브 클립", "듀엣 라이브", "커버 라이브", "live clip", "acoustic live"]
+            "라이브 클립", "듀엣 라이브", "커버 라이브", "live clip", "acoustic live",
+            "데일리룩", "코디 추천", "OOTD", "출근룩", "하객룩", "가을 코디", "여자 룩북"]
 
 def cmd_suggest(queries=None):
     """CC candidates per category (read-only): already used/downloaded ids removed, best first by views."""
