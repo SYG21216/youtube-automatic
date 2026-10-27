@@ -142,6 +142,16 @@ def cmd_fetch(file_id, outdir):
     base, ext = os.path.splitext(f["name"])
     video = drive_get(f["id"], os.path.join(outdir, "video" + ext))
     vid = find_id(f["name"])
+    # yt-dlp without ffmpeg leaves "name [ID].f399.mp4" (picture only) + "name [ID].f140.m4a" (sound): merge them here
+    if re.search(r"\.f\d+$", base):
+        sound = next((x for x in files if vid and f"[{vid}]" in x["name"] and x["name"].endswith((".m4a", ".webm", ".opus"))
+                      and x["id"] != f["id"]), None)
+        if sound:
+            a = drive_get(sound["id"], os.path.join(outdir, "audio" + os.path.splitext(sound["name"])[1]))
+            merged = os.path.join(outdir, "video_av.mp4")
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", video, "-i", a, "-map", "0:v", "-map", "1:a", "-c", "copy", merged], check=True)
+            os.replace(merged, video); os.remove(a)
+        base = re.sub(r"\.f\d+$", "", base)  # so the .srt lookup below still matches
     meta = youtube_meta(vid) or {"id": vid, "license": "unknown"}
     json.dump(meta, open(os.path.join(outdir, "meta.json"), "w"), ensure_ascii=False, indent=1)
     sub = next((x for x in files if x["name"].startswith(base) and x["name"].endswith((".srt", ".vtt"))), None)
