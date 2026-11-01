@@ -100,7 +100,9 @@ def drive_bgm(tmp):
     """Random track from the Drive folder 쇼츠BGM (YouTube Audio Library, no attribution needed); story style only."""
     from upload import drive_ls, drive_get
     try:
-        f = random.choice(drive_ls(DRIVE_BGM, "audio/"))
+        tracks = drive_ls(DRIVE_BGM, "audio/")
+        calm = [x for x in tracks if not re.search(r"feat|vocal|remix", x["name"], re.I)]  # sung tracks fight the narration
+        f = random.choice(calm or tracks)
         print(f"bgm: {f['name']}")
         return drive_get(f["id"], os.path.join(tmp, "bgm.mp3"))
     except Exception as e:  # music is nice-to-have; never block the upload over it
