@@ -186,16 +186,76 @@ PlayResY: 1080
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: DTitle,Pretendard ExtraBold,96,&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,0,0,0,0,100,100,0,0,1,8,4,5,120,120,0,1
 Style: DLabel,Pretendard ExtraBold,54,&H00FFFFFF,&H00FFFFFF,&H007E2EFF,&H00000000,0,0,0,0,100,100,0,0,3,14,0,7,80,80,70,1
+Style: CShape,Pretendard ExtraBold,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+Style: CHead,Pretendard ExtraBold,66,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,100,100,0,1
+Style: CBig,Pretendard ExtraBold,120,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,120,120,0,1
+Style: CHuge,Pretendard ExtraBold,220,&H0042C8FF,&H0042C8FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,100,100,0,1
+Style: CText,Pretendard ExtraBold,62,&H00E6E6E6,&H00E6E6E6,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,100,100,0,1
+Style: CLabel,Pretendard ExtraBold,56,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,6,100,100,0,1
+Style: CVal,Pretendard ExtraBold,60,&H0042C8FF,&H0042C8FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,100,100,0,1
 Style: DCap,Pretendard ExtraBold,58,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,5,2,2,160,160,70,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
+CARD_BG = "0x141826"
+ACCENTS = ["&H007E2EFF&", "&H00F0B43C&", "&H0042C8FF&", "&H00A0E06E&"]  # ASS BGR: pink, blue, yellow, green
+
+def circle(r):
+    """ASS drawing of a circle inside the box (0,0)-(2r,2r); place it with \\an7 at (cx - r, cy - r)."""
+    k = round(r * 0.5523)
+    c = lambda x, y: f"{x + r} {y + r}"
+    return (f"m {c(r, 0)} b {c(r, k)} {c(k, r)} {c(0, r)} b {c(-k, r)} {c(-r, k)} {c(-r, 0)} "
+            f"b {c(-r, -k)} {c(-k, -r)} {c(0, -r)} b {c(k, -r)} {c(r, -k)} {c(r, 0)}")
+
+def card_lines(c, a, b):
+    """Motion-graphics card drawn with ASS (no stock media): headline / number / compare bars / list.
+    c = {"kind": ..., "head": "optional heading", ...}; a, b = absolute start/end seconds."""
+    d = b - a
+    L = []
+    ev = lambda s, e, style, txt, layer=3: L.append(f"Dialogue: {layer},{ts(s)},{ts(e)},{style},,0,0,0,,{txt}")
+    # slow-drifting soft circles so the background never looks frozen
+    ev(a, b, "CShape", f"{{\\an7\\move({-120},{720},{-60},{690})\\1c&H5A2E3C&\\1a&H90&\\p1}}{circle(300)}", 1)
+    ev(a, b, "CShape", f"{{\\an7\\move({1500},{-200},{1440},{-160})\\1c&H6A4A1E&\\1a&H98&\\p1}}{circle(380)}", 1)
+    pop = "\\fscx70\\fscy70\\t(0,180,\\fscx106\\fscy106)\\t(180,280,\\fscx100\\fscy100)"
+    top = 170
+    if c.get("head"):
+        ev(a, b, "CHead", f"{{\\an8\\pos(960,110)\\fad(200,0)}}{c['head']}")
+        top = 300
+    kind = c.get("kind", "headline")
+    if kind == "headline":
+        ev(a, b, "CBig", f"{{\\an5\\pos(960,500){pop}}}{c.get('text', '')}")
+        if c.get("sub"):
+            ev(a + 0.4, b, "CText", f"{{\\an5\\pos(960,680)\\fad(250,0)}}{c['sub']}")
+    elif kind == "number":
+        ev(a, b, "CHuge", f"{{\\an5\\pos(960,470){pop}}}{c.get('value', '')}")
+        ev(a + 0.35, b, "CText", f"{{\\an5\\pos(960,680)\\fad(250,0)}}{c.get('label', '')}")
+    elif kind == "compare":
+        items = c["items"][:4]  # [[label, shown value, number], ...]
+        mx = max(float(x[2]) for x in items) or 1
+        gap = min(200, 560 // len(items))
+        for i, (label, shown, num) in enumerate(items):
+            y = top + 60 + i * gap
+            st = a + 0.25 + i * min(0.5, d / (len(items) + 2))
+            w = max(20, int(1000 * float(num) / mx))
+            ev(st, b, "CLabel", f"{{\\an6\\pos(560,{y + 45})\\fad(200,0)}}{label}")
+            ev(st, b, "CShape", f"{{\\an7\\pos(600,{y})\\1c{ACCENTS[i % 4]}\\fscx0\\t(0,700,\\fscx100)\\p1}}m 0 0 l {w} 0 {w} 90 0 90", 2)
+            ev(st + 0.6, b, "CVal", f"{{\\an4\\pos({620 + w},{y + 45})\\fad(200,0)}}{shown}")
+    elif kind == "list":
+        items = c["items"][:5]
+        step = min(1.2, d / (len(items) + 1))
+        for i, it in enumerate(items):
+            y = top + 40 + i * 130
+            st = a + 0.2 + i * step
+            ev(st, b, "CShape", f"{{\\an7\\pos(304,{y + 14})\\1c{ACCENTS[i % 4]}\\p1}}{circle(26)}", 2)
+            ev(st, b, "CText", f"{{\\an4\\pos(390,{y + 40})\\fad(200,0)}}{it}")
+    return L
+
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
-def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False, total=0, doc=False):
+def ass(title, timeline, cap_y=1180, pick=None, labels=(), captions=CAPTIONS, shop=False, total=0, doc=False, cards=()):
     head = DOC_HEAD if doc else """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -224,9 +284,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     while "*" in t:
         t = t.replace("*", hl, 1).replace("*", base, 1)
     if doc:  # title card only at the start; chapters come in as labels, narration as captions
-        lines = [f"Dialogue: 1,{ts(0)},{ts(min(6, end))},DTitle,,0,0,0,,{{\\fad(300,500)}}{t}"]
+        lines = [f"Dialogue: 1,{ts(0)},{ts(min(6, end))},DTitle,,0,0,0,,{{\\fad(300,500)}}{t}"] if t else []
         lines += [f"Dialogue: 1,{ts(a)},{ts(min(b, a + 4))},DLabel,,0,0,0,,{{\\fad(200,300)}}{text}" for a, b, text in labels]
         lines += [f"Dialogue: 0,{ts(a)},{ts(b)},DCap,,0,0,0,,{text}" for a, b, text in timeline]
+        lines += list(cards)
         return head + "\n".join(lines) + "\n"
     if pick:
         v = "V" if pick.get("vertical") else ""
@@ -257,7 +318,7 @@ def make(script, out):
         story = script.get("style") == "story"
         doc = script.get("style") == "doc"
         reset = "{\\c%s}" % GREEN if pick else "{\\c&HFFFFFF&}"
-        vparts, aparts, timeline, labels = [], [], [], []
+        vparts, aparts, timeline, labels, cards = [], [], [], [], []
         tr = os.path.join(os.path.dirname(script.get("source", "")), "transcript.txt")
         starts = sorted(float(l.split()[0]) for l in open(tr) if l.strip()) if script.get("source") and os.path.exists(tr) else []
         for i, s in enumerate(script["scenes"]):
@@ -303,6 +364,15 @@ def make(script, out):
                     vparts.append(seg)
                 t += d
                 continue
+            if s.get("card"):
+                # motion-graphics card: plain background here, the drawing goes into the subtitle layer
+                seg = os.path.join(tmp, f"{i}.mp4")
+                ff("-f", "lavfi", "-i", f"color=c={CARD_BG}:s={'1920x1080' if doc else '1080x1920'}:r=30", "-t", f"{d:.3f}",
+                   "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", seg)
+                vparts.append(seg)
+                cards += card_lines(s["card"], t, t + d)
+                t += d
+                continue
             if s.get("img"):
                 # still pictures (Pixabay / Wikimedia Commons, see source.py images), slow zoom so they don't look frozen
                 imgs = s["img"] if isinstance(s["img"], list) else [s["img"]]
@@ -337,7 +407,9 @@ def make(script, out):
         ff("-f", "concat", "-safe", "0", "-i", lst("a.txt", aparts), "-c", "copy", os.path.join(tmp, "a.wav"))
         sub = os.path.join(tmp, "s.ass")
         cap_y = (1480 if pick["vertical"] else PICK_TOP + 700) if pick else STORY_TOP + 930 if story else 1440 if script.get("source") else 1180
-        open(sub, "w").write(ass(script.get("title", ""), timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False), t, doc))
+        # a card-first doc opens on its own headline card, so skip the separate title card
+        shown_title = "" if doc and script["scenes"][0].get("card") else script.get("title", "")
+        open(sub, "w").write(ass(shown_title, timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False), t, doc, cards))
         # background music only for story style (others keep the original voices clean)
         bgm = drive_bgm(tmp) if story or doc else None
         mus = ["-stream_loop", "-1", "-i", bgm] if bgm else []
