@@ -21,6 +21,7 @@ script.json:
 Reads PIXABAY_API_KEY and GOOGLE_TTS_KEY from the environment. Needs ffmpeg/ffprobe (with libass).
 """
 import argparse, base64, json, re, random, os, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
+from cards import CARD_BG, STYLES as CARD_STYLES, card_lines
 
 VOICE = "ko-KR-Chirp3-HD-Kore"
 BRAND = "대신봐드림"  # channel name shown in the pick-style header
@@ -186,71 +187,11 @@ PlayResY: 1080
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: DTitle,Pretendard ExtraBold,96,&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,0,0,0,0,100,100,0,0,1,8,4,5,120,120,0,1
 Style: DLabel,Pretendard ExtraBold,54,&H00FFFFFF,&H00FFFFFF,&H007E2EFF,&H00000000,0,0,0,0,100,100,0,0,3,14,0,7,80,80,70,1
-Style: CShape,Pretendard ExtraBold,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
-Style: CHead,Pretendard ExtraBold,66,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,100,100,0,1
-Style: CBig,Pretendard ExtraBold,120,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,120,120,0,1
-Style: CHuge,Pretendard ExtraBold,220,&H0042C8FF,&H0042C8FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,100,100,0,1
-Style: CText,Pretendard ExtraBold,62,&H00E6E6E6,&H00E6E6E6,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,100,100,0,1
-Style: CLabel,Pretendard ExtraBold,56,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,6,100,100,0,1
-Style: CVal,Pretendard ExtraBold,60,&H0042C8FF,&H0042C8FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,100,100,0,1
-Style: DCap,Pretendard ExtraBold,58,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,5,2,2,160,160,70,1
+""" + CARD_STYLES + """Style: DCap,Pretendard ExtraBold,58,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,5,2,2,160,160,70,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-
-CARD_BG = "0x141826"
-ACCENTS = ["&H007E2EFF&", "&H00F0B43C&", "&H0042C8FF&", "&H00A0E06E&"]  # ASS BGR: pink, blue, yellow, green
-
-def circle(r):
-    """ASS drawing of a circle inside the box (0,0)-(2r,2r); place it with \\an7 at (cx - r, cy - r)."""
-    k = round(r * 0.5523)
-    c = lambda x, y: f"{x + r} {y + r}"
-    return (f"m {c(r, 0)} b {c(r, k)} {c(k, r)} {c(0, r)} b {c(-k, r)} {c(-r, k)} {c(-r, 0)} "
-            f"b {c(-r, -k)} {c(-k, -r)} {c(0, -r)} b {c(k, -r)} {c(r, -k)} {c(r, 0)}")
-
-def card_lines(c, a, b):
-    """Motion-graphics card drawn with ASS (no stock media): headline / number / compare bars / list.
-    c = {"kind": ..., "head": "optional heading", ...}; a, b = absolute start/end seconds."""
-    d = b - a
-    L = []
-    ev = lambda s, e, style, txt, layer=3: L.append(f"Dialogue: {layer},{ts(s)},{ts(e)},{style},,0,0,0,,{txt}")
-    # slow-drifting soft circles so the background never looks frozen
-    ev(a, b, "CShape", f"{{\\an7\\move({-120},{720},{-60},{690})\\1c&H5A2E3C&\\1a&H90&\\p1}}{circle(300)}", 1)
-    ev(a, b, "CShape", f"{{\\an7\\move({1500},{-200},{1440},{-160})\\1c&H6A4A1E&\\1a&H98&\\p1}}{circle(380)}", 1)
-    pop = "\\fscx70\\fscy70\\t(0,180,\\fscx106\\fscy106)\\t(180,280,\\fscx100\\fscy100)"
-    top = 170
-    if c.get("head"):
-        ev(a, b, "CHead", f"{{\\an8\\pos(960,110)\\fad(200,0)}}{c['head']}")
-        top = 300
-    kind = c.get("kind", "headline")
-    if kind == "headline":
-        ev(a, b, "CBig", f"{{\\an5\\pos(960,500){pop}}}{c.get('text', '')}")
-        if c.get("sub"):
-            ev(a + 0.4, b, "CText", f"{{\\an5\\pos(960,680)\\fad(250,0)}}{c['sub']}")
-    elif kind == "number":
-        ev(a, b, "CHuge", f"{{\\an5\\pos(960,470){pop}}}{c.get('value', '')}")
-        ev(a + 0.35, b, "CText", f"{{\\an5\\pos(960,680)\\fad(250,0)}}{c.get('label', '')}")
-    elif kind == "compare":
-        items = c["items"][:4]  # [[label, shown value, number], ...]
-        mx = max(float(x[2]) for x in items) or 1
-        gap = min(200, 560 // len(items))
-        for i, (label, shown, num) in enumerate(items):
-            y = top + 60 + i * gap
-            st = a + 0.25 + i * min(0.5, d / (len(items) + 2))
-            w = max(20, int(1000 * float(num) / mx))
-            ev(st, b, "CLabel", f"{{\\an6\\pos(560,{y + 45})\\fad(200,0)}}{label}")
-            ev(st, b, "CShape", f"{{\\an7\\pos(600,{y})\\1c{ACCENTS[i % 4]}\\fscx0\\t(0,700,\\fscx100)\\p1}}m 0 0 l {w} 0 {w} 90 0 90", 2)
-            ev(st + 0.6, b, "CVal", f"{{\\an4\\pos({620 + w},{y + 45})\\fad(200,0)}}{shown}")
-    elif kind == "list":
-        items = c["items"][:5]
-        step = min(1.2, d / (len(items) + 1))
-        for i, it in enumerate(items):
-            y = top + 40 + i * 130
-            st = a + 0.2 + i * step
-            ev(st, b, "CShape", f"{{\\an7\\pos(304,{y + 14})\\1c{ACCENTS[i % 4]}\\p1}}{circle(26)}", 2)
-            ev(st, b, "CText", f"{{\\an4\\pos(390,{y + 40})\\fad(200,0)}}{it}")
-    return L
 
 def ts(t):
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
