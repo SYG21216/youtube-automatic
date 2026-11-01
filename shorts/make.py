@@ -46,7 +46,8 @@ FIT_DOC = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,f
 MAX_DOC_TTS_CHARS = 6000  # one long-form a day ≈ 190k chars/month, still far inside the 1M free tier
 GREEN = r"&H3CFF5A&"  # pick-style speech captions, like the variety-show subtitles viewers know
 DRIVE_BGM = "쇼츠BGM"
-BGM_VOL = 0.06  # story style only: just audible under the narration
+BGM_LUFS = -32  # background music loudness (narration sits around -16): clearly there, never in the way
+BGM_XFADE = 3   # seconds of crossfade where a short track loops back to its start
 CUT = 2.5      # seconds per stock clip; fast cuts read as current
 CHUNK = 9      # max chars per caption pop
 END_NOTE = "추천템은 프로필 링크에서!"  # last seconds of product Shorts ("shop": true); points at the profile affiliate link
@@ -104,6 +105,20 @@ def drive_bgm(tmp):
         return drive_get(f["id"], os.path.join(tmp, "bgm.mp3"))
     except Exception as e:  # music is nice-to-have; never block the upload over it
         print(f"warning: drive bgm failed: {e}", file=sys.stderr)
+
+def bgm_bed(path, need, tmp):
+    """One track for the whole video: loudness-normalised, looped with crossfades if it is shorter, faded at both ends."""
+    d = duration(path)
+    n = 1 if d >= need else min(20, int((need - d) // max(1, d - BGM_XFADE)) + 2)
+    ins = sum([["-i", path] for _ in range(n)], [])
+    chain, last = "", "[0:a]"
+    for k in range(1, n):
+        chain += f"{last}[{k}:a]acrossfade=d={BGM_XFADE}:c1=tri:c2=tri[x{k}];"
+        last = f"[x{k}]"
+    out = os.path.join(tmp, "bed.wav")
+    ff(*ins, "-filter_complex", f"{chain}{last}loudnorm=I={BGM_LUFS}:TP=-9:LRA=7,atrim=0:{need:.3f},asetpts=PTS-STARTPTS,"
+       f"afade=t=in:d=1.5,afade=t=out:st={max(0, need - 2.5):.2f}:d=2.5[m]", "-map", "[m]", "-ar", "44100", "-ac", "2", out)
+    return out
 
 def search(query):
     hits = pixabay(q=query, per_page=30, video_type="film")[:12]
@@ -353,8 +368,8 @@ def make(script, out):
         open(sub, "w").write(ass(shown_title, timeline, cap_y, pick, labels, CAPTIONS or story, script.get("shop", False), t, doc, cards))
         # background music only for story style (others keep the original voices clean)
         bgm = drive_bgm(tmp) if story or doc else None
-        mus = ["-stream_loop", "-1", "-i", bgm] if bgm else []
-        amix = (f"[2:a]volume={BGM_VOL},afade=t=out:st={max(0, t - 1.5):.2f}:d=1.5[b];[1:a][b]amix=inputs=2:duration=first:normalize=0[a]"
+        mus = ["-i", bgm_bed(bgm, t, tmp)] if bgm else []
+        amix = ("[1:a]aformat=channel_layouts=stereo[nar];[nar][2:a]amix=inputs=2:duration=first:normalize=0[a]"
                 if bgm else "[1:a]anull[a]")
         ff("-i", os.path.join(tmp, "v.mp4"), "-i", os.path.join(tmp, "a.wav"), *mus,
            "-filter_complex", f"[0:v]subtitles={sub}:fontsdir={fontsdir}[v];{amix}", "-map", "[v]", "-map", "[a]", "-t", f"{t:.3f}",
