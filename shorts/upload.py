@@ -9,7 +9,7 @@ Reads YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN from the environment
 (optional DRIVE_REFRESH_TOKEN: a different Google account for Drive, e.g. when the channel is a Brand Account).
 A vertical video under 3 minutes is treated as a Short by YouTube automatically.
 """
-import argparse, difflib, datetime, json, os, re, shutil, sys, urllib.parse, urllib.request
+import argparse, subprocess, difflib, datetime, json, os, re, shutil, sys, urllib.parse, urllib.request
 
 def access_token(drive=False):
     # A Brand Account channel has no Drive of its own, so Drive may use a separate token (DRIVE_REFRESH_TOKEN)
@@ -102,6 +102,12 @@ if __name__ == "__main__":
     if a.recent:
         print("\n".join(f"{t}\t{src}" for t, src in recent())); sys.exit()
     if not (a.video and a.title): p.error("video and --title are required")
+    # 롱폼 업로드 중단 (2026-11-23): 3분 넘는 영상과 가로 영상은 올리지 않는다
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration",
+                            "-of", "json", a.video], capture_output=True, text=True, check=True)
+    info = json.loads(probe.stdout); st = info["streams"][0]
+    if float(info["format"]["duration"]) > 180 or st["width"] > st["height"]:
+        sys.exit("long-form/landscape uploads are stopped: only vertical shorts up to 3 minutes")
     if a.desc.count("#") < 3: p.error("--desc needs a content summary and at least 3 #hashtags")
     dup = None if a.not_duplicate else similar(a.title, [t for t, _ in recent()])
     if dup: sys.exit(f"possible duplicate: already uploaded {dup!r}. If it really is a different moment/story, rerun with --not-duplicate")
